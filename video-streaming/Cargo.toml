@@ -1,0 +1,13 @@
+[package]
+name = "video-streaming"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rav1e = "0.5.1"
+
+[dependencies.nokhwa]
+version = "0.9.4"
+features = ["input-v4l"]
