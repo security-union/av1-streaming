@@ -4,6 +4,7 @@ use rav1e::*;
 
 fn main() {
     let mut enc = EncoderConfig::default();
+    let nc = nats::connect("nats:4222").unwrap();
 
     enc.width = 64;
     enc.height = 96;
@@ -45,6 +46,7 @@ fn main() {
         match ctx.receive_packet() {
             Ok(pkt) => {
                 println!("Packet {}", pkt.input_frameno);
+                nc.publish("video.1", pkt.data).unwrap();
             }
             Err(e) => match e {
                 EncoderStatus::LimitReached => {

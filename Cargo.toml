@@ -2,4 +2,5 @@
 
 members = [
     "video-streaming",
+    "websocket-server"
 ]
