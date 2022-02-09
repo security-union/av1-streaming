@@ -9,6 +9,7 @@ use actix_web_actors::ws;
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 /// How long before lack of client response causes a timeout
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
+const VIDEO_FPS: Duration = Duration::from_millis(1000);
 
 /// do websocket handshake and start `MyWebSocket` actor
 async fn ws_index(r: HttpRequest, stream: web::Payload) -> Result<HttpResponse, Error> {
@@ -24,6 +25,7 @@ struct MyWebSocket {
     /// Client must send ping at least once per 10 seconds (CLIENT_TIMEOUT),
     /// otherwise we drop connection.
     hb: Instant,
+    nc: nats::Connection,
 }
 
 impl Actor for MyWebSocket {
@@ -31,7 +33,8 @@ impl Actor for MyWebSocket {
 
     /// Method is called on actor start. We start the heartbeat process here.
     fn started(&mut self, ctx: &mut Self::Context) {
-        self.hb(ctx);
+        self.start_heartbeat(ctx);
+        self.start_video_stream(ctx);
     }
 }
 
@@ -61,13 +64,16 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for MyWebSocket {
 
 impl MyWebSocket {
     fn new() -> Self {
-        Self { hb: Instant::now() }
+        Self {
+            hb: Instant::now(),
+            nc: nats::connect("nats:4222").unwrap(),
+        }
     }
 
     /// helper method that sends ping to client every second.
     ///
     /// also this method checks heartbeats from client
-    fn hb(&self, ctx: &mut <Self as Actor>::Context) {
+    fn start_heartbeat(&self, ctx: &mut <Self as Actor>::Context) {
         ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
             // check client heartbeats
             if Instant::now().duration_since(act.hb) > CLIENT_TIMEOUT {
@@ -84,29 +90,20 @@ impl MyWebSocket {
             ctx.ping(b"");
         });
     }
-}
 
-struct MyNats {}
-
-impl Actor for MyNats {
-    type Context = Context<Self>;
-
-    fn started(&mut self, ctx: &mut Context<Self>) {
-        let nc = nats::connect("nats:4222").unwrap();
-        let subscription = nc.subscribe("video.1").unwrap();
-        subscription.with_handler(move |msg| {
-            send_video_packet_to_ws(msg);
-            Ok(())
+    fn start_video_stream(&self, ctx: &mut <Self as Actor>::Context) {
+        let subscription = self.nc.subscribe("video.1").unwrap();
+        ctx.run_interval(VIDEO_FPS, move |_, ctx| {
+            match subscription.next() {
+                Some(m) => {
+                    ctx.binary(m.data);
+                },
+                None => {
+                    println!("No video frame to send");
+                }
+            }
         });
     }
-
-    fn stopped(&mut self, ctx: &mut Context<Self>) {
-        println!("MyNats has stopped");
-    }
-}
-
-fn send_video_packet_to_ws(pkt: nats::Message) {
-    
 }
 
 #[actix_web::main]
