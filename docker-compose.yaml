@@ -1,0 +1,24 @@
+version: "3.8"
+services:
+  video-stream:
+    privileged: true
+    build:
+      context: .
+    command: cargo run --bin video-streaming
+    volumes:
+      - /app/target
+      - /dev/video0:/dev/video0
+  websocket-server:
+    build:
+      context: .
+    command: cargo run --bin websocket-server
+    ports:
+      - 8080:8080
+    volumes:
+      - /app/target
+  nats:
+    image: nats
+    ports:
+      - 4222:4222
+      - 6222:6222
+      - 8222:8222
