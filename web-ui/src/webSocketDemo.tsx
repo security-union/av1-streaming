@@ -1,10 +1,11 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, Dispatch, SetStateAction } from 'react';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 
+const webSocketURL = 'ws://localhost:10000';
 export const WebSocketDemo = () => {
   //Public API that will echo messages sent to it back to the client
-  const [socketUrl, setSocketUrl] = useState('wss://echo.websocket.org');
-  const [messageHistory, setMessageHistory] = useState([]);
+  const [socketUrl, setSocketUrl] = useState(webSocketURL);
+  const [messageHistory, setMessageHistory]: [any[], Dispatch<SetStateAction<any[]>>] = useState([{ data: "sdfsdf"}]);
 
   const {
     sendMessage,
@@ -14,12 +15,12 @@ export const WebSocketDemo = () => {
 
   useEffect(() => {
     if (typeof lastMessage === 'object') {
-    setMessageHistory(prev => prev.concat(lastMessage));
+      setMessageHistory(prev => prev.concat(lastMessage));
     }
   }, [lastMessage, setMessageHistory]);
 
   const handleClickChangeSocketUrl = useCallback(() =>
-    setSocketUrl('wss://demos.kaazing.com/echo'), []);
+    setSocketUrl(webSocketURL), []);
 
   const handleClickSendMessage = useCallback(() =>
     sendMessage('Hello'), []);
@@ -49,7 +50,7 @@ export const WebSocketDemo = () => {
       {lastMessage ? <span>Last message: {lastMessage.data}</span> : null}
       <ul>
         {messageHistory
-          .map((message, idx) => <span key={idx}>{message ? message.data : null}</span>)}
+          .map((message, idx) => <span key={idx}>{message?.data}</span>)}
       </ul>
     </div>
   );
