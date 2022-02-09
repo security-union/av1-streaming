@@ -16,6 +16,11 @@ services:
       - 8080:8080
     volumes:
       - /app/target
+  web-ui:
+    build:
+      context: ./web-ui
+    ports:
+      - 8000:8000
   nats:
     image: nats
     ports:
