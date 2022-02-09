@@ -41,8 +41,9 @@ export const WebSocketDemo = () => {
   const handleStartCaptureClick = React.useCallback(() => {
     setCapturing(true);
     async function captureAndEncode(processChunk: any) {
+      const stream = webcamRef.current.stream as MediaStream;
       let frame_counter = 0;
-      var track = webcamRef.current.stream.getTracks()[0];
+      var track = stream.getTracks()[0];
       var settings = track.getSettings();
       var pending_outputs = 0;
       var prc = new MediaStreamTrackProcessor(track);
@@ -69,13 +70,13 @@ export const WebSocketDemo = () => {
       let encoder = new VideoEncoder(init);
       encoder.configure(config);
       frameReader.read().then(function processFrame({done, value}) { 
-        if(done||stop) {
+        if(done||capturing) {
           value.close();
           encoder.close();
           return;
         }
     
-        if (!stop && pending_outputs <= 30) {
+        if (!capturing && pending_outputs <= 30) {
           if (++frame_counter % 20 == 0) {
             console.log(frame_counter);
           }
