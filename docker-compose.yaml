@@ -20,7 +20,9 @@ services:
     build:
       context: ./web-ui
     ports:
-      - 8000:8000
+      - 3000:3000
+    volumes:
+      - ./web-ui/src:/app/src
   nats:
     image: nats
     ports:
