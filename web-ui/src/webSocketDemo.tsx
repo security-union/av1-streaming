@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, Dispatch, SetStateAction } fro
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 import Webcam from 'react-webcam';
 const webSocketURL = 'ws://localhost:10000';
-let codec_string = "av1";
+let codec_string = "av01.0.04M.08";
 
 export const WebSocketDemo = () => {
   //Public API that will echo messages sent to it back to the client
@@ -41,40 +41,44 @@ export const WebSocketDemo = () => {
   const handleStartCaptureClick = React.useCallback(() => {
     setCapturing(true);
     async function captureAndEncode(processChunk: any) {
-      const stream = webcamRef.current.stream as MediaStream;
-      let frame_counter = 0;
-      var track = stream.getTracks()[0];
-      var settings = track.getSettings();
-      var pending_outputs = 0;
-      var prc = new MediaStreamTrackProcessor(track);
-      var frameStream = prc.readable;
-      const frameReader= frameStream.getReader();
-    
-      const init = {
-        output: (chunk) => {
-          pending_outputs--;
-          processChunk(chunk);
-        },
-        error: (e: Error) => {
-          console.error(e.message);
-        }
-      };
-    
-      const config = {
-        codec: codec_string,
-        width: settings.width,
-        height: settings.height,
-        bitrate: 10e6,
-      };
-    
-      let encoder = new VideoEncoder(init);
-      encoder.configure(config);
-      frameReader.read().then(function processFrame({done, value}) { 
-        if(done||capturing) {
-          value.close();
-          encoder.close();
-          return;
-        }
+      if (webcamRef.current !== null) {
+        // @ts-ignore
+        const stream = webcamRef.current.stream as MediaStream;
+        let frame_counter = 0;
+        var track = stream.getTracks()[0];
+        var settings = track.getSettings();
+        var pending_outputs = 0;
+        // @ts-ignore
+        var prc = new MediaStreamTrackProcessor(track);
+        var frameStream = prc.readable;
+        const frameReader= frameStream.getReader();
+      
+        const init = {
+          // @ts-ignore
+          output: (chunk) => {
+            pending_outputs--;
+            processChunk(chunk);
+          },
+          error: (e: Error) => {
+            console.error(e.message);
+          }
+        };
+      
+        const config = {
+          codec: codec_string,
+          width: settings.width!,
+          height: settings.height!
+        };
+      
+        let encoder = new VideoEncoder(init);
+        encoder.configure(config);
+        // @ts-ignore
+        frameReader.read().then(function processFrame({done, value}) { 
+          if(done||capturing) {
+            value.close();
+            encoder.close();
+            return;
+          }
     
         if (!capturing && pending_outputs <= 30) {
           if (++frame_counter % 20 == 0) {
@@ -88,7 +92,12 @@ export const WebSocketDemo = () => {
         value.close();
         frameReader.read().then(processFrame);
       });
+        
+      } else {
+        console.error("error!!!");
+      }
     }
+    // @ts-ignore
     captureAndEncode((chunk) => {
       sendMessage(chunk, false);
     });
