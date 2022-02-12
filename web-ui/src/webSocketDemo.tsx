@@ -1,14 +1,16 @@
 import React, { useState, useCallback, useEffect, Dispatch, SetStateAction } from 'react';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 import Webcam from 'react-webcam';
-const webSocketURL = 'ws://localhost:8080/ws';
+const webSocketURL = 'ws://localhost:8080';
 let codec_string = "av01.0.04M.08";
 
 export const WebSocketDemo = () => {
   //Public API that will echo messages sent to it back to the client
   const [socketUrl, setSocketUrl] = useState(webSocketURL);
   const [messageHistory, setMessageHistory]: [any[], Dispatch<SetStateAction<any[]>>] = useState([{ data: "sdfsdf"}]);
+  const canvasRef = React.useRef(null)
   const webcamRef = React.useRef(null);
+  const [videoDecoder, setVideoDecoder] = useState(null);
 
   const {
     sendMessage,
@@ -17,8 +19,40 @@ export const WebSocketDemo = () => {
   } = useWebSocket(socketUrl);
 
   useEffect(() => {
-    if (typeof lastMessage === 'object') {
-      setMessageHistory(prev => prev.concat(lastMessage));
+    try {
+      const payload = JSON.parse(lastMessage?.data); 
+      const data = new Uint8Array(payload.data); 
+        const chunk = new EncodedVideoChunk({
+        timestamp: payload.timestamp,
+        type: payload.type,
+        data,
+      });
+      // @ts-ignore
+      videoDecoder.decode(chunk);
+    }catch (e: any) {
+      console.error("error ", e);
+    }
+    
+    if (videoDecoder === null) {
+      // @ts-ignore
+      setVideoDecoder(prev => {
+        const newEncoder =  new VideoDecoder({
+          output: (frame) => {
+            console.log("decoded frame");
+            // @ts-ignore
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(frame, 0, 0);
+            frame.close();
+          },
+          error: (error) => {
+            console.error("error", error);
+          }
+        });
+        newEncoder.configure({
+          codec: codec_string
+        });
+        return newEncoder;
+      });
     }
   }, [lastMessage, setMessageHistory]);
 
@@ -40,7 +74,7 @@ export const WebSocketDemo = () => {
 
   const handleStartCaptureClick = React.useCallback(() => {
     setCapturing(true);
-    async function captureAndEncode(processChunk: any) {
+    async function captureAndEncode(processChunk: (arg0: EncodedVideoChunk) => void) {
       if (webcamRef.current !== null) {
         // @ts-ignore
         const stream = webcamRef.current.stream as MediaStream;
@@ -98,8 +132,16 @@ export const WebSocketDemo = () => {
       }
     }
     // @ts-ignore
-    captureAndEncode((chunk) => {
-      sendMessage(chunk, false);
+    captureAndEncode((chunk: EncodedVideoChunk) => {
+      const chunkData = new Uint8Array(chunk.byteLength);
+      chunk.copyTo(chunkData);
+      const payload = {
+        data: chunkData,
+        type: chunk.type,
+        timestamp: chunk.timestamp,
+        duration: chunk.duration
+      }
+      sendMessage(JSON.stringify(payload), false);
     });
     
   }, [webcamRef, setCapturing]);
@@ -128,11 +170,12 @@ export const WebSocketDemo = () => {
         Click Me to send 'Hello'
       </button>
       <span>The WebSocket is currently {connectionStatus}</span>
-      {lastMessage ? <span>Last message: {lastMessage.data}</span> : null}
+      <canvas ref={canvasRef} width={200} height={200}/>
+      {/* {lastMessage ? <span>Last message: {lastMessage.data}</span> : null}
       <ul>
         {messageHistory
           .map((message, idx) => <span key={idx}>{message?.data}</span>)}
-      </ul>
+      </ul> */}
     </div>
   );
 };
