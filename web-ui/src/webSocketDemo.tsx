@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, Dispatch, SetStateAction } from 'react';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 import Webcam from 'react-webcam';
-const webSocketURL = 'ws://localhost:8000/ws';
+const webSocketURL = 'ws://localhost:8080/ws';
 let codec_string = "av01.0.04M.08";
 
 export const WebSocketDemo = () => {
