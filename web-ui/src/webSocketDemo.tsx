@@ -27,6 +27,9 @@ export const WebSocketDemo = () => {
         type: payload.type,
         data,
       });
+      if (payload.type === "key") {
+        console.log("got key message");
+      }
       // @ts-ignore
       videoDecoder.decode(chunk);
     }catch (e: any) {
