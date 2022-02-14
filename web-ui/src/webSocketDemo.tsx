@@ -1,6 +1,8 @@
 import React, { useState, useCallback, useEffect, Dispatch, SetStateAction } from 'react';
 import useWebSocket, { ReadyState } from 'react-use-websocket';
 import Webcam from 'react-webcam';
+import {toByteArray, fromByteArray} from 'base64-js';
+
 const webSocketURL = 'ws://localhost:8080';
 let codec_string = "av01.0.04M.08";
 
@@ -21,10 +23,11 @@ export const WebSocketDemo = () => {
   useEffect(() => {
     try {
       const payload = JSON.parse(lastMessage?.data); 
-      const data = new Uint8Array(payload.data); 
-        const chunk = new EncodedVideoChunk({
+      const data = toByteArray(payload.data);
+      const chunk = new EncodedVideoChunk({
         timestamp: payload.timestamp,
         type: payload.type,
+        duration: payload.duration,
         data,
       });
       if (payload.type === "key") {
@@ -32,6 +35,7 @@ export const WebSocketDemo = () => {
       }
       // @ts-ignore
       videoDecoder.decode(chunk);
+      
     }catch (e: any) {
       console.error("error ", e);
     }
@@ -54,6 +58,7 @@ export const WebSocketDemo = () => {
         newEncoder.configure({
           codec: codec_string
         });
+        console.log("configured video decoder");
         return newEncoder;
       });
     }
@@ -123,7 +128,7 @@ export const WebSocketDemo = () => {
           }
     
           pending_outputs++;
-          const insert_keyframe = (frame_counter % 150) == 0;
+          const insert_keyframe = (frame_counter % 50) == 0;
           encoder.encode(value, { keyFrame: insert_keyframe });
         }
         value.close();
@@ -138,8 +143,10 @@ export const WebSocketDemo = () => {
     captureAndEncode((chunk: EncodedVideoChunk) => {
       const chunkData = new Uint8Array(chunk.byteLength);
       chunk.copyTo(chunkData);
+      const encoded = fromByteArray(chunkData);
+      console.log("chunk data", encoded);
       const payload = {
-        data: chunkData,
+        data: encoded,
         type: chunk.type,
         timestamp: chunk.timestamp,
         duration: chunk.duration
