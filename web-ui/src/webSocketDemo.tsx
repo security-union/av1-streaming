@@ -46,6 +46,7 @@ export const WebSocketDemo = () => {
         const newEncoder =  new VideoDecoder({
           output: (frame) => {
             console.log("decoded frame");
+            const canvas = canvasRef.current;
             // @ts-ignore
             const ctx = canvas.getContext("2d");
             ctx.drawImage(frame, 0, 0);
@@ -144,7 +145,6 @@ export const WebSocketDemo = () => {
       const chunkData = new Uint8Array(chunk.byteLength);
       chunk.copyTo(chunkData);
       const encoded = fromByteArray(chunkData);
-      console.log("chunk data", encoded);
       const payload = {
         data: encoded,
         type: chunk.type,
@@ -180,12 +180,7 @@ export const WebSocketDemo = () => {
         Click Me to send 'Hello'
       </button>
       <span>The WebSocket is currently {connectionStatus}</span>
-      <canvas ref={canvasRef} width={200} height={200}/>
-      {/* {lastMessage ? <span>Last message: {lastMessage.data}</span> : null}
-      <ul>
-        {messageHistory
-          .map((message, idx) => <span key={idx}>{message?.data}</span>)}
-      </ul> */}
+      <canvas ref={canvasRef} width={640} height={480}/>
     </div>
   );
 };
