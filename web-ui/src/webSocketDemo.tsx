@@ -24,19 +24,38 @@ export const WebSocketDemo = () => {
 
   useEffect(() => {
     try {
-      const payload = JSON.parse(lastMessage?.data); 
-      const data = toByteArray(payload.data);
-      const chunk = new EncodedVideoChunk({
-        timestamp: payload.timestamp,
-        type: payload.type,
-        duration: payload.duration,
-        data,
-      });
-      if (payload.type === "key") {
-        console.log("got key message");
+      if (BROWSER_TEST) {
+        const payload = JSON.parse(lastMessage?.data); 
+        const data = toByteArray(payload.data);
+      
+        const chunk = new EncodedVideoChunk({
+          timestamp: payload.timestamp,
+          type: payload.frameType,
+          duration: payload.duration,
+          data,
+        });
+        if (payload.type === "key") {
+          console.log("got key message");
+        }
+        // @ts-ignore
+        videoDecoder.decode(chunk);
+      } else {
+        lastMessage?.data.text().then((text: string) => {
+          const payload = JSON.parse(text);
+          const data = toByteArray(payload.data);
+          const chunk = new EncodedVideoChunk({
+            timestamp: 0,
+            type: payload.frameType,
+            duration: 0,
+            data,
+          });
+          if (payload.type === "key") {
+            console.log("got key message");
+          }
+          // @ts-ignore
+          videoDecoder.decode(chunk);
+        }) 
       }
-      // @ts-ignore
-      videoDecoder.decode(chunk);
       
     }catch (e: any) {
       console.error("error ", e);
@@ -149,7 +168,7 @@ export const WebSocketDemo = () => {
       const encoded = fromByteArray(chunkData);
       const payload = {
         data: encoded,
-        type: chunk.type,
+        frameType: chunk.type,
         timestamp: chunk.timestamp,
         duration: chunk.duration
       }

@@ -17,6 +17,8 @@ fn main() {
 
     enc.width = 64;
     enc.height = 96;
+    enc.min_key_frame_interval = 15;
+    enc.max_key_frame_interval = 20;
 
     enc.speed_settings = SpeedSettings::from_preset(9);
 
