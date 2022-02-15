@@ -4,6 +4,7 @@ use rav1e::*;
 use serde::{Serialize, Deserialize};
 use serde_json;
 use base64::{encode};
+use std::thread;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct VideoPacket {
@@ -13,7 +14,6 @@ struct VideoPacket {
 
 fn main() {
     let mut enc = EncoderConfig::default();
-    let nc = nats::connect("nats:4222").unwrap();
 
     enc.width = 320;
     enc.height = 240;
@@ -22,6 +22,7 @@ fn main() {
     enc.bit_depth = 8;
     enc.error_resilient = true;
     enc.speed_settings = SpeedSettings::from_preset(10);
+    enc.low_latency = true;
 
     let cfg = Config::new().with_encoder_config(enc);
 
@@ -58,12 +59,15 @@ fn main() {
 
         match ctx.receive_packet() {
             Ok(pkt) => {
-                println!("Packet {}", pkt.input_frameno);
-                let frameType = if pkt.frame_type == FrameType::KEY { "key" } else { "delta" };
-                let data = encode(pkt.data);
-                let frame = VideoPacket{ data, frameType: frameType.to_string()};
-                let json = serde_json::to_string(&frame).unwrap();
-                nc.publish("video.1", json).unwrap();
+                let handle = thread::spawn(move || {
+                    let nc = nats::connect("nats:4222").unwrap();
+                    println!("Packet {}", pkt.input_frameno);
+                    let frameType = if pkt.frame_type == FrameType::KEY { "key" } else { "delta" };
+                    let data = encode(pkt.data);
+                    let frame = VideoPacket{ data, frameType: frameType.to_string()};
+                    let json = serde_json::to_string(&frame).unwrap();
+                    nc.publish("video.1", json).unwrap();
+                });
             }
             Err(e) => match e {
                 EncoderStatus::LimitReached => {
