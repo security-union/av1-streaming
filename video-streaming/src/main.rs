@@ -15,12 +15,13 @@ fn main() {
     let mut enc = EncoderConfig::default();
     let nc = nats::connect("nats:4222").unwrap();
 
-    enc.width = 64;
-    enc.height = 96;
+    enc.width = 640;
+    enc.height = 480;
     enc.min_key_frame_interval = 15;
     enc.max_key_frame_interval = 20;
-
-    enc.speed_settings = SpeedSettings::from_preset(9);
+    enc.bit_depth = 8;
+    enc.error_resilient = 1;
+    enc.speed_settings = SpeedSettings::from_preset(10);
 
     let cfg = Config::new().with_encoder_config(enc);
 
