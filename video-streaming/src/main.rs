@@ -15,12 +15,12 @@ fn main() {
     let mut enc = EncoderConfig::default();
     let nc = nats::connect("nats:4222").unwrap();
 
-    enc.width = 640;
-    enc.height = 480;
+    enc.width = 320;
+    enc.height = 240;
     enc.min_key_frame_interval = 15;
     enc.max_key_frame_interval = 20;
     enc.bit_depth = 8;
-    enc.error_resilient = 1;
+    enc.error_resilient = true;
     enc.speed_settings = SpeedSettings::from_preset(10);
 
     let cfg = Config::new().with_encoder_config(enc);
@@ -43,6 +43,7 @@ fn main() {
             let stride = (enc.width + p.cfg.xdec) >> p.cfg.xdec;
             p.copy_from_raw_u8(flat_samples.samples, stride, 1);
         }
+        println!("sending frame");
         match ctx.send_frame(encoding_frame.clone()) {
             Ok(_) => {}
             Err(e) => match e {
