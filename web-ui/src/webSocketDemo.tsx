@@ -3,7 +3,8 @@ import useWebSocket, { ReadyState } from 'react-use-websocket';
 import Webcam from 'react-webcam';
 import {toByteArray, fromByteArray} from 'base64-js';
 
-const webSocketURL = 'ws://localhost:8080';
+const BROWSER_TEST = false;
+const webSocketURL = (BROWSER_TEST) ? 'ws://localhost:8080' : 'ws://localhost:8080/ws';
 let codec_string = "av01.0.04M.08";
 
 export const WebSocketDemo = () => {
@@ -22,19 +23,38 @@ export const WebSocketDemo = () => {
 
   useEffect(() => {
     try {
-      const payload = JSON.parse(lastMessage?.data); 
-      const data = toByteArray(payload.data);
-      const chunk = new EncodedVideoChunk({
-        timestamp: payload.timestamp,
-        type: payload.type,
-        duration: payload.duration,
-        data,
-      });
-      if (payload.type === "key") {
-        console.log("got key message");
+      if (BROWSER_TEST) {
+        const payload = JSON.parse(lastMessage?.data); 
+        const data = toByteArray(payload.data);
+      
+        const chunk = new EncodedVideoChunk({
+          timestamp: payload.timestamp,
+          type: payload.frameType,
+          duration: payload.duration,
+          data,
+        });
+        if (payload.type === "key") {
+          console.log("got key message");
+        }
+        // @ts-ignore
+        videoDecoder.decode(chunk);
+      } else {
+        lastMessage?.data.text().then((text: string) => {
+          const payload = JSON.parse(text);
+          const data = toByteArray(payload.data);
+          const chunk = new EncodedVideoChunk({
+            timestamp: 0,
+            type: payload.frameType,
+            duration: 0,
+            data,
+          });
+          if (payload.type === "key") {
+            console.log("got key message");
+          }
+          // @ts-ignore
+          videoDecoder.decode(chunk);
+        }) 
       }
-      // @ts-ignore
-      videoDecoder.decode(chunk);
       
     }catch (e: any) {
       console.error("error ", e);
@@ -147,7 +167,7 @@ export const WebSocketDemo = () => {
       const encoded = fromByteArray(chunkData);
       const payload = {
         data: encoded,
-        type: chunk.type,
+        frameType: chunk.type,
         timestamp: chunk.timestamp,
         duration: chunk.duration
       }
@@ -162,8 +182,8 @@ export const WebSocketDemo = () => {
 
   return (
     <div>
-      <Webcam audio={false} ref={webcamRef} />
-      {capturing ? (
+      {BROWSER_TEST && <Webcam audio={false} ref={webcamRef} />}
+      {BROWSER_TEST && capturing ? (
         <button onClick={handleStopCaptureClick}>Stop Capture</button>
       ) : (
         <button onClick={handleStartCaptureClick}>Start Capture</button>
@@ -172,12 +192,6 @@ export const WebSocketDemo = () => {
         onClick={handleClickChangeSocketUrl}
       >
         Click Me to change Socket Url
-      </button>
-      <button
-        onClick={handleClickSendMessage}
-        disabled={readyState !== ReadyState.OPEN}
-      >
-        Click Me to send 'Hello'
       </button>
       <span>The WebSocket is currently {connectionStatus}</span>
       <canvas ref={canvasRef} width={640} height={480}/>
