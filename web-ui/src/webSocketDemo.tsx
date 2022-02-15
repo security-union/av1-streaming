@@ -3,7 +3,9 @@ import useWebSocket, { ReadyState } from 'react-use-websocket';
 import Webcam from 'react-webcam';
 import {toByteArray, fromByteArray} from 'base64-js';
 
-const webSocketURL = 'ws://localhost:8080';
+const BROWSER_TEST = false;
+
+const webSocketURL = (BROWSER_TEST) ? 'ws://localhost:8080' : 'ws://localhost:8080/ws';
 let codec_string = "av01.0.04M.08";
 
 export const WebSocketDemo = () => {
@@ -162,8 +164,8 @@ export const WebSocketDemo = () => {
 
   return (
     <div>
-      <Webcam audio={false} ref={webcamRef} />
-      {capturing ? (
+      {BROWSER_TEST && <Webcam audio={false} ref={webcamRef} />}
+      {BROWSER_TEST && capturing ? (
         <button onClick={handleStopCaptureClick}>Stop Capture</button>
       ) : (
         <button onClick={handleStartCaptureClick}>Start Capture</button>
@@ -172,12 +174,6 @@ export const WebSocketDemo = () => {
         onClick={handleClickChangeSocketUrl}
       >
         Click Me to change Socket Url
-      </button>
-      <button
-        onClick={handleClickSendMessage}
-        disabled={readyState !== ReadyState.OPEN}
-      >
-        Click Me to send 'Hello'
       </button>
       <span>The WebSocket is currently {connectionStatus}</span>
       <canvas ref={canvasRef} width={640} height={480}/>
