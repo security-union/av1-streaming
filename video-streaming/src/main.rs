@@ -1,6 +1,15 @@
 use nokhwa::{Camera, CameraFormat, FrameFormat};
-use rav1e::config::SpeedSettings;
+use rav1e::{config::SpeedSettings, prelude::FrameType};
 use rav1e::*;
+use serde::{Serialize, Deserialize};
+use serde_json;
+use base64::{encode};
+
+#[derive(Serialize, Deserialize, Debug)]
+struct VideoPacket {
+    data: String,
+    frameType: String,
+}
 
 fn main() {
     let mut enc = EncoderConfig::default();
@@ -46,7 +55,11 @@ fn main() {
         match ctx.receive_packet() {
             Ok(pkt) => {
                 println!("Packet {}", pkt.input_frameno);
-                nc.publish("video.1", pkt.data).unwrap();
+                let frameType = if pkt.frame_type == FrameType::KEY { "key" } else { "delta" };
+                let data = encode(pkt.data);
+                let frame = VideoPacket{ data, frameType: frameType.to_string()};
+                let json = serde_json::to_string(&frame).unwrap();
+                nc.publish("video.1", json).unwrap();
             }
             Err(e) => match e {
                 EncoderStatus::LimitReached => {

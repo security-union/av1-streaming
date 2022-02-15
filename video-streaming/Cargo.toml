@@ -8,6 +8,9 @@ edition = "2021"
 [dependencies]
 nats = "0.18.0"
 rav1e = "0.5.1"
+serde = "1.0.136"
+base64 = "0.13.0"
+serde_json = "1.0"
 
 [dependencies.nokhwa]
 version = "0.9.4"
