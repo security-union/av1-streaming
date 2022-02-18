@@ -1,5 +1,6 @@
 use futures_util::{StreamExt, SinkExt};
 use warp::{Filter, ws::{WebSocket, Message}};
+use log::info;
 
 #[tokio::main]
 async fn main() {
@@ -23,7 +24,7 @@ pub async fn client_connection(ws: WebSocket) {
     loop {
         match sub.next().await {
             Some(m) => {
-                println!("Forwarding video message");
+                info!("Forwarding video message");
                 client_ws_sender.send(Message::binary(m.data)).await.unwrap();
             },
             None => {}

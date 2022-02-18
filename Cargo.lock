@@ -2614,6 +2614,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "image",
+ "log",
  "nats 0.18.0",
  "nokhwa",
  "rav1e",
@@ -2759,6 +2760,7 @@ version = "0.1.0"
 dependencies = [
  "async-nats",
  "futures-util",
+ "log",
  "tokio",
  "warp",
 ]
