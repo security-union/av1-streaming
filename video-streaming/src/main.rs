@@ -5,8 +5,9 @@ use rav1e::{config::SpeedSettings, prelude::FrameType};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::thread;
-use std::sync::{Arc, Mutex};
-use std::cell::Cell;
+use std::sync::mpsc::{self, Sender, Receiver};
+use image::{ImageBuffer, Rgb};
+
 
 #[derive(Serialize, Deserialize, Debug)]
 struct VideoPacket {
@@ -25,62 +26,63 @@ fn main() {
     enc.speed_settings = SpeedSettings::from_preset(7);
     enc.bitrate = 290;
 
-    let cfg = Config::new().with_encoder_config(enc);
+    let cfg = Config::new().with_encoder_config(enc).with_threads(8);
 
-    let ctx: Arc<Cell<Context<u16>>> = Arc::new(Cell::new(cfg.new_context().unwrap()));
-    let mut write_ctx = Arc::clone(&ctx);
+    let (tx, rx): (Sender<ImageBuffer<Rgb<u8>, Vec<u8>>>, Receiver<ImageBuffer<Rgb<u8>, Vec<u8>>>) = mpsc::channel();
+
     let write_thread = thread::spawn(move || {
-        println!("Opening camera");
+        println!("write thread: Opening camera");
         let mut camera = Camera::new(
             0,                                                             // index
             Some(CameraFormat::new_from(320, 240, FrameFormat::YUYV, 30)), // format
         )
         .unwrap();
         camera.open_stream().unwrap();
-        println!("Starting write loop");
+        println!("write thread: Starting write loop");
         loop {
-            println!("Creating new frame");
-            let mut encoding_frame = write_ctx.into_inner().new_frame();
-            println!("Waiting for camera frame");
+            println!("write thread: Waiting for camera frame");
             let frame = camera.frame().unwrap();
-            println!("Copying camera frames");
+            println!("write thread: sending frame");
+            tx.send(frame).unwrap();
+        }
+    });
+
+    let read_thread = thread::spawn(move || {
+        let mut ctx: Context<u16> = cfg.new_context().unwrap();
+
+        loop {
+            let frame = rx.recv().unwrap();
+            println!("read thread: Creating new frame");
+            let mut encoding_frame = ctx.new_frame();
             let flat_samples = frame.as_flat_samples();
             for p in &mut encoding_frame.planes {
                 let stride = (enc.width + p.cfg.xdec) >> p.cfg.xdec;
                 p.copy_from_raw_u8(flat_samples.samples, stride, 1);
-            }
-            println!("sending frame");
-            match write_ctx.into_inner().send_frame(encoding_frame) {
+            } 
+            match ctx.send_frame(encoding_frame) {
                 Ok(_) => {
-                    println!("sent frame");
+                    println!("read thread: queued frame");
                 }
                 Err(e) => match e {
                     EncoderStatus::EnoughData => {
-                        println!("Unable to append frame to the internal queue");
+                        println!("read thread: Unable to append frame to the internal queue");
                     }
                     _ => {
-                        panic!("Unable to send frame");
+                        panic!("read thread: Unable to send frame");
                     }
                 },
             }
-        }
-    });
-
-    let read_ctx = Arc::clone(&ctx);
-    let read_thread = thread::spawn(move || {
-        loop {
-            println!("receiving frame");
-            // std::thread::sleep(Duration::from_millis(10));
-            match read_ctx.into_inner().receive_packet() {
+            println!("read thread: receiving encoded frame");
+            match ctx.receive_packet() {
                 Ok(pkt) => {
-                    println!("Encoding packet {}", pkt.input_frameno);
+                    println!("read frame: base64 Encoding packet {}", pkt.input_frameno);
                     let frame_type = if pkt.frame_type == FrameType::KEY {
                         "key"
                     } else {
                         "delta"
                     };
                     let data = encode(pkt.data);
-                    println!("Encoded packet {}", pkt.input_frameno);
+                    println!("read frame: base64 Encoded packet {}", pkt.input_frameno);
                     let frame = VideoPacket {
                         data,
                         frameType: frame_type.to_string(),
@@ -90,12 +92,12 @@ fn main() {
                 }
                 Err(e) => match e {
                     EncoderStatus::LimitReached => {
-                        println!("Limit reached");
+                        println!("read thread: Limit reached");
                     }
-                    EncoderStatus::Encoded => println!("Encoded"),
-                    EncoderStatus::NeedMoreData => println!("Need more data"),
+                    EncoderStatus::Encoded => println!("read thread: Encoded"),
+                    EncoderStatus::NeedMoreData => println!("read thread: Need more data"),
                     _ => {
-                        panic!("Unable to receive packet");
+                        panic!("read thread: Unable to receive packet");
                     }
                 },
             }
