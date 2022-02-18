@@ -1,9 +1,12 @@
+#[macro_use]
+extern crate log;
+
 use futures_util::{StreamExt, SinkExt};
 use warp::{Filter, ws::{WebSocket, Message}};
-use log::info;
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     let routes = warp::path("ws")
         // The `ws()` filter will prepare the Websocket handshake.
         .and(warp::ws())

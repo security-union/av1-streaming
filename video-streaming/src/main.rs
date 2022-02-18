@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 use base64::encode;
 use nokhwa::{Camera, CameraFormat, FrameFormat};
 use rav1e::*;
@@ -8,7 +11,6 @@ use serde_json;
 use std::thread;
 use std::sync::mpsc::{self, Sender, Receiver};
 use image::{ImageBuffer, Rgb};
-use log::info;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct VideoPacket {
@@ -17,6 +19,7 @@ struct VideoPacket {
 }
 
 fn main() {
+    env_logger::init();
     let mut enc = EncoderConfig::default();
     let nc = nats::connect("nats:4222").unwrap();
     let width = 640;
@@ -52,7 +55,7 @@ fn main() {
         info!(r#"write thread: Opening camera"#);
         let mut camera = Camera::new(
             0,                                                             // index
-            Some(CameraFormat::new_from(width as u32, height as u32, FrameFormat::MJPEG, 30)), // format
+            Some(CameraFormat::new_from(width as u32, height as u32, FrameFormat::YUYV, 30)), // format
         )
         .unwrap();
         camera.open_stream().unwrap();
