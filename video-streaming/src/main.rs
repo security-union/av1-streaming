@@ -18,23 +18,26 @@ struct VideoPacket {
 
 fn main() {
     let mut enc = EncoderConfig::default();
-    // let nc = nats::connect("nats:4222").unwrap();
+    let nc = nats::connect("nats:4222").unwrap();
+    let width = 640;
+    let height = 480;
 
-    enc.width = 320;
-    enc.height = 240;
+    enc.width = width;
+    enc.height = height;
     enc.bit_depth = 8;
     enc.error_resilient = true;
     enc.speed_settings = SpeedSettings::from_preset(10);
     enc.rdo_lookahead_frames = 1;
     enc.bitrate = 150;
-    enc.min_key_frame_interval = 10;
-    enc.max_key_frame_interval = 20;
+    enc.min_key_frame_interval = 2;
+    enc.max_key_frame_interval = 3;
     enc.low_latency = true;
     enc.min_quantizer = 30;
     enc.quantizer = 50;
     enc.still_picture = false;
+    enc.tiles = 8;
 
-    let cfg = Config::new().with_encoder_config(enc).with_threads(8);
+    let cfg = Config::new().with_encoder_config(enc).with_threads(4);
 
     let (tx, rx): (Sender<ImageBuffer<Rgb<u8>, Vec<u8>>>, Receiver<ImageBuffer<Rgb<u8>, Vec<u8>>>) = mpsc::channel();
 
@@ -42,7 +45,7 @@ fn main() {
         println!("write thread: Opening camera");
         let mut camera = Camera::new(
             0,                                                             // index
-            Some(CameraFormat::new_from(320, 240, FrameFormat::YUYV, 30)), // format
+            Some(CameraFormat::new_from(width as u32, height as u32, FrameFormat::YUYV, 30)), // format
         )
         .unwrap();
         camera.open_stream().unwrap();
@@ -96,7 +99,7 @@ fn main() {
                         frameType: frame_type.to_string(),
                     };
                     let json = serde_json::to_string(&frame).unwrap();
-                    // nc.publish("video.1", json).unwrap();
+                    nc.publish("video.1", json).unwrap();
                 }
                 Err(e) => match e {
                     EncoderStatus::LimitReached => {
