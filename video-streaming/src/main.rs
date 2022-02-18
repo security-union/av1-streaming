@@ -1,6 +1,7 @@
 use base64::encode;
 use nokhwa::{Camera, CameraFormat, FrameFormat};
 use rav1e::*;
+use rav1e::prelude::ColorDescription;
 use rav1e::{config::SpeedSettings, prelude::FrameType};
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -17,14 +18,21 @@ struct VideoPacket {
 
 fn main() {
     let mut enc = EncoderConfig::default();
-    let nc = nats::connect("nats:4222").unwrap();
+    // let nc = nats::connect("nats:4222").unwrap();
 
     enc.width = 320;
     enc.height = 240;
     enc.bit_depth = 8;
     enc.error_resilient = true;
-    enc.speed_settings = SpeedSettings::from_preset(7);
-    enc.bitrate = 290;
+    enc.speed_settings = SpeedSettings::from_preset(10);
+    enc.rdo_lookahead_frames = 1;
+    enc.bitrate = 150;
+    enc.min_key_frame_interval = 10;
+    enc.max_key_frame_interval = 20;
+    enc.low_latency = true;
+    enc.min_quantizer = 30;
+    enc.quantizer = 50;
+    enc.still_picture = false;
 
     let cfg = Config::new().with_encoder_config(enc).with_threads(8);
 
@@ -40,15 +48,15 @@ fn main() {
         camera.open_stream().unwrap();
         println!("write thread: Starting write loop");
         loop {
-            println!("write thread: Waiting for camera frame");
+            // println!("write thread: Waiting for camera frame");
             let frame = camera.frame().unwrap();
-            println!("write thread: sending frame");
+            // println!("write thread: sending frame");
             tx.send(frame).unwrap();
         }
     });
 
     let read_thread = thread::spawn(move || {
-        let mut ctx: Context<u16> = cfg.new_context().unwrap();
+        let mut ctx: Context<u8> = cfg.new_context().unwrap();
 
         loop {
             let frame = rx.recv().unwrap();
@@ -75,20 +83,20 @@ fn main() {
             println!("read thread: receiving encoded frame");
             match ctx.receive_packet() {
                 Ok(pkt) => {
-                    println!("read frame: base64 Encoding packet {}", pkt.input_frameno);
+                    println!("read thread: base64 Encoding packet {}", pkt.input_frameno);
                     let frame_type = if pkt.frame_type == FrameType::KEY {
                         "key"
                     } else {
                         "delta"
                     };
                     let data = encode(pkt.data);
-                    println!("read frame: base64 Encoded packet {}", pkt.input_frameno);
+                    println!("read thread: base64 Encoded packet {}", pkt.input_frameno);
                     let frame = VideoPacket {
                         data,
                         frameType: frame_type.to_string(),
                     };
                     let json = serde_json::to_string(&frame).unwrap();
-                    nc.publish("video.1", json).unwrap();
+                    // nc.publish("video.1", json).unwrap();
                 }
                 Err(e) => match e {
                     EncoderStatus::LimitReached => {
