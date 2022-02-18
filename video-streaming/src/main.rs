@@ -1,6 +1,7 @@
 use base64::encode;
 use nokhwa::{Camera, CameraFormat, FrameFormat};
 use rav1e::*;
+use rav1e::prelude::{ChromaSampling, ColorDescription, ColorPrimaries, TransferCharacteristics, MatrixCoefficients};
 use rav1e::{config::SpeedSettings, prelude::FrameType};
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -28,13 +29,20 @@ fn main() {
     enc.speed_settings = SpeedSettings::from_preset(10);
     enc.rdo_lookahead_frames = 1;
     enc.bitrate = 150;
-    enc.min_key_frame_interval = 2;
-    enc.max_key_frame_interval = 3;
+    enc.min_key_frame_interval = 20;
+    enc.max_key_frame_interval = 50;
     enc.low_latency = true;
     enc.min_quantizer = 30;
     enc.quantizer = 50;
     enc.still_picture = false;
     enc.tiles = 8;
+    enc.chroma_sampling = ChromaSampling::Cs420;
+    enc.color_description = Some(ColorDescription {
+        color_primaries: ColorPrimaries::BT709,
+        transfer_characteristics: TransferCharacteristics::BT709,
+        matrix_coefficients: MatrixCoefficients::BT709 
+    });
+    
 
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
 
@@ -44,7 +52,7 @@ fn main() {
         info!(r#"write thread: Opening camera"#);
         let mut camera = Camera::new(
             0,                                                             // index
-            Some(CameraFormat::new_from(width as u32, height as u32, FrameFormat::YUYV, 30)), // format
+            Some(CameraFormat::new_from(width as u32, height as u32, FrameFormat::MJPEG, 30)), // format
         )
         .unwrap();
         camera.open_stream().unwrap();
@@ -66,6 +74,7 @@ fn main() {
             let mut encoding_frame = ctx.new_frame();
             let flat_samples = frame.as_flat_samples();
             for p in &mut encoding_frame.planes {
+                
                 let stride = (enc.width + p.cfg.xdec) >> p.cfg.xdec;
                 p.copy_from_raw_u8(flat_samples.samples, stride, 1);
             } 

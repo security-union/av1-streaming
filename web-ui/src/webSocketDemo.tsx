@@ -5,7 +5,7 @@ import {toByteArray, fromByteArray} from 'base64-js';
 
 const BROWSER_TEST = false;
 const webSocketURL = (BROWSER_TEST) ? 'ws://localhost:8080' : 'ws://localhost:8080/ws';
-let codec_string = "av01.0.04M.08";
+let codec_string = "av01.0.01M.08";
 
 export const WebSocketDemo = () => {
   //Public API that will echo messages sent to it back to the client
