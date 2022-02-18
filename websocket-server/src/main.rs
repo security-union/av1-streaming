@@ -93,14 +93,13 @@ impl MyWebSocket {
 
     fn start_video_stream(&self, ctx: &mut <Self as Actor>::Context) {
         let subscription = self.nc.subscribe("video.1").unwrap();
-        ctx.run_interval(VIDEO_FPS, move |_, ctx| {
-            match subscription.next() {
-                Some(m) => {
-                    ctx.binary(m.data);
-                },
-                None => {
-                    println!("No video frame to send");
-                }
+        ctx.run_interval(VIDEO_FPS, move |_, ctx| match subscription.next() {
+            Some(m) => {
+                println!("Forwarding video message");
+                ctx.binary(m.data);
+            }
+            None => {
+                println!("No video frame to send");
             }
         });
     }

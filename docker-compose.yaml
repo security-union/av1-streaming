@@ -4,7 +4,7 @@ services:
     privileged: true
     build:
       context: .
-    command: cargo watch -x 'run --bin video-streaming'
+    command: cargo watch -x 'run  --release --bin video-streaming'
     volumes:
       - /app/target
       - /dev/video0:/dev/video0
@@ -12,7 +12,7 @@ services:
   websocket-server:
     build:
       context: .
-    command: cargo watch -x 'run --bin websocket-server'
+    command: cargo watch -x 'run --release --bin websocket-server'
     ports:
       - 8080:8080
     volumes:
