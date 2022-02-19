@@ -5,19 +5,23 @@ services:
     build:
       context: .
     command: cargo watch -x 'run  --release --bin video-streaming'
+    environment:
+      - RUST_LOG=info
     volumes:
       - /app/target
       - /dev/video0:/dev/video0
-      - ./video-streaming/src:/app/video-streaming/src
+      - ./video-streaming:/app/video-streaming
   websocket-server:
     build:
       context: .
     command: cargo watch -x 'run --release --bin websocket-server'
+    environment:
+      - RUST_LOG=info
     ports:
       - 8080:8080
     volumes:
       - /app/target
-      - ./websocket-server/src:/app/websocket-server/src
+      - ./websocket-server:/app/websocket-server
   web-ui:
     build:
       context: ./web-ui
