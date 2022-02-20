@@ -6,8 +6,7 @@ services:
       context: .
     command: cargo watch -x 'run  --release --bin video-streaming'
     environment:
-      - NATS_URL=nats:4222
-      - RUST_LOG=warning
+      - RUST_LOG=warn
     volumes:
       - /app/target
       - /dev/video0:/dev/video0

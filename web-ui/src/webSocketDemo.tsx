@@ -21,7 +21,6 @@ export const WebSocketDemo = () => {
 
   const {
     sendMessage,
-    lastMessage,
     lastJsonMessage,
     readyState,
   } = useWebSocket(socketUrl);
