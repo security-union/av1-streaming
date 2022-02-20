@@ -2,17 +2,15 @@
 extern crate log;
 
 use base64::encode;
-use image::{ImageBuffer, Rgb};
 use nokhwa::{Camera, CameraFormat, FrameFormat};
-use rav1e::prelude::{
-    ChromaSampling, ColorDescription, ColorPrimaries, MatrixCoefficients, TransferCharacteristics,
-};
 use rav1e::*;
+use rav1e::prelude::{ChromaSampling, ColorDescription, ColorPrimaries, TransferCharacteristics, MatrixCoefficients};
 use rav1e::{config::SpeedSettings, prelude::FrameType};
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
+use std::sync::mpsc::{self, Sender, Receiver};
+use image::{ImageBuffer, Rgb};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct VideoPacket {
@@ -45,26 +43,19 @@ fn main() {
     enc.color_description = Some(ColorDescription {
         color_primaries: ColorPrimaries::BT709,
         transfer_characteristics: TransferCharacteristics::BT709,
-        matrix_coefficients: MatrixCoefficients::BT709,
+        matrix_coefficients: MatrixCoefficients::BT709 
     });
+    
 
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
 
-    let (tx, rx): (
-        Sender<ImageBuffer<Rgb<u8>, Vec<u8>>>,
-        Receiver<ImageBuffer<Rgb<u8>, Vec<u8>>>,
-    ) = mpsc::channel();
+    let (tx, rx): (Sender<ImageBuffer<Rgb<u8>, Vec<u8>>>, Receiver<ImageBuffer<Rgb<u8>, Vec<u8>>>) = mpsc::channel();
 
     let write_thread = thread::spawn(move || {
         info!(r#"write thread: Opening camera"#);
         let mut camera = Camera::new(
-            0, // index
-            Some(CameraFormat::new_from(
-                width as u32,
-                height as u32,
-                FrameFormat::YUYV,
-                30,
-            )), // format
+            0,                                                             // index
+            Some(CameraFormat::new_from(width as u32, height as u32, FrameFormat::YUYV, 30)), // format
         )
         .unwrap();
         camera.open_stream().unwrap();
@@ -86,9 +77,10 @@ fn main() {
             let mut encoding_frame = ctx.new_frame();
             let flat_samples = frame.as_flat_samples();
             for p in &mut encoding_frame.planes {
+                
                 let stride = (enc.width + p.cfg.xdec) >> p.cfg.xdec;
                 p.copy_from_raw_u8(flat_samples.samples, stride, 1);
-            }
+            } 
             match ctx.send_frame(encoding_frame) {
                 Ok(_) => {
                     info!("read thread: queued frame");

@@ -1,11 +1,8 @@
 #[macro_use]
 extern crate log;
 
-use futures_util::{SinkExt, StreamExt};
-use warp::{
-    ws::{Message, WebSocket},
-    Filter,
-};
+use futures_util::{StreamExt, SinkExt};
+use warp::{Filter, ws::{WebSocket, Message}};
 
 #[tokio::main]
 async fn main() {
@@ -31,12 +28,9 @@ pub async fn client_connection(ws: WebSocket) {
         match sub.next().await {
             Some(m) => {
                 info!("Forwarding video message");
-                client_ws_sender
-                    .send(Message::binary(m.data))
-                    .await
-                    .unwrap();
-            }
+                client_ws_sender.send(Message::binary(m.data)).await.unwrap();
+            },
             None => {}
         };
-    }
+    };
 }
