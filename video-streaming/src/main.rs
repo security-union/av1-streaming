@@ -23,7 +23,7 @@ struct VideoPacket {
 fn main() {
     env_logger::init();
     let mut enc = EncoderConfig::default();
-    let nc = nats::connect("nats:4222").unwrap();
+    let nc = nats::connect(env!("NATS_URL")).unwrap();
     let width = 640;
     let height = 480;
 
