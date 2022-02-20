@@ -22,7 +22,7 @@ pub async fn client_connection(ws: WebSocket) {
     println!("establishing client connection... {:?}", ws);
     let (mut client_ws_sender, _client_ws_rcv) = ws.split();
     // let (tx, rx) = mpsc::unbounded_channel();
-    let nc = async_nats::connect("nats:4222").await.unwrap();
+    let nc = async_nats::connect(env!("NATS_URL")).await.unwrap();
     let sub = nc.subscribe("video.1").await.unwrap();
     loop {
         match sub.next().await {
