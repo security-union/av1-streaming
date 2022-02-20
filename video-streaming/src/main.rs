@@ -67,7 +67,7 @@ async fn main() {
         info!(r#"write thread: Opening camera"#);
         let mut camera = Camera::new(
             0,                                                             // index
-            Some(CameraFormat::new_from(width as u32, height as u32, FrameFormat::YUYV, 30)), // format
+            Some(CameraFormat::new_from(width as u32, height as u32, FrameFormat::MJPEG, 30)), // format
         )
         .unwrap();
         camera.open_stream().unwrap();
@@ -184,6 +184,8 @@ pub async fn client_connection(ws: WebSocket, mut reader: BusReader<String>) {
     loop {
        let next = reader.recv().unwrap();
         info!("Forwarding video message");
+        let time_serializing = Instant::now();
         client_ws_sender.send(Message::text(next)).await.unwrap();
+        warn!("web_socket serializing {:?}", time_serializing.elapsed());
     }
 }
