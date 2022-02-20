@@ -6,7 +6,8 @@ services:
       context: .
     command: cargo watch -x 'run  --release --bin video-streaming'
     environment:
-      - RUST_LOG=info
+      - RUST_LOG=error
+      - NATS_URL=nats:4222
     volumes:
       - /app/target
       - /dev/video0:/dev/video0
@@ -17,6 +18,7 @@ services:
     command: cargo watch -x 'run --release --bin websocket-server'
     environment:
       - RUST_LOG=info
+      - NATS_URL=nats:4222
     ports:
       - 8080:8080
     volumes:

@@ -1,8 +1,11 @@
 #[macro_use]
 extern crate log;
 
-use futures_util::{StreamExt, SinkExt};
-use warp::{Filter, ws::{WebSocket, Message}};
+use futures_util::{SinkExt, StreamExt};
+use warp::{
+    ws::{Message, WebSocket},
+    Filter,
+};
 
 #[tokio::main]
 async fn main() {
@@ -22,15 +25,18 @@ pub async fn client_connection(ws: WebSocket) {
     println!("establishing client connection... {:?}", ws);
     let (mut client_ws_sender, _client_ws_rcv) = ws.split();
     // let (tx, rx) = mpsc::unbounded_channel();
-    let nc = async_nats::connect("nats:4222").await.unwrap();
+    let nc = async_nats::connect(env!("NATS_URL")).await.unwrap();
     let sub = nc.subscribe("video.1").await.unwrap();
     loop {
         match sub.next().await {
             Some(m) => {
                 info!("Forwarding video message");
-                client_ws_sender.send(Message::binary(m.data)).await.unwrap();
-            },
+                client_ws_sender
+                    .send(Message::binary(m.data))
+                    .await
+                    .unwrap();
+            }
             None => {}
         };
-    };
+    }
 }
