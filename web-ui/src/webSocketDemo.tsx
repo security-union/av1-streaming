@@ -15,7 +15,6 @@ let codec_string = "av01.0.01M.08";
 export const WebSocketDemo = () => {
   //Public API that will echo messages sent to it back to the client
   const [socketUrl, setSocketUrl] = useState(webSocketURL);
-  const [messageHistory, setMessageHistory]: [any[], Dispatch<SetStateAction<any[]>>] = useState([{ data: "sdfsdf"}]);
   const canvasRef = React.useRef(null)
   const webcamRef = React.useRef(null);
   const [videoDecoder, setVideoDecoder] = useState(null);
@@ -31,7 +30,6 @@ export const WebSocketDemo = () => {
       if (BROWSER_TEST) {
         const payload = JSON.parse(lastMessage?.data); 
         const data = toByteArray(payload.data);
-      
         const chunk = new EncodedVideoChunk({
           timestamp: payload.timestamp,
           type: payload.frameType,
@@ -44,8 +42,12 @@ export const WebSocketDemo = () => {
         // @ts-ignore
         videoDecoder.decode(chunk);
       } else {
-        lastMessage?.data.text().then((text: string) => {
-          const payload = JSON.parse(text);
+          const payload = JSON.parse(lastMessage?.data);
+          console.log("lag ", Date.now() / 1000 - (payload.epochTime.secs + Math.pow(payload.epochTime.nanos, -9)));
+          if (!payload.data) {
+            console.error("no data");
+            return
+          }
           const data = toByteArray(payload.data);
           const chunk = new EncodedVideoChunk({
             timestamp: 0,
@@ -58,7 +60,6 @@ export const WebSocketDemo = () => {
           }
           // @ts-ignore
           videoDecoder.decode(chunk);
-        }) 
       }
       
     }catch (e: any) {
@@ -83,27 +84,15 @@ export const WebSocketDemo = () => {
         });
         newEncoder.configure({
           codec: codec_string,
-          codedWidth: 640,
-          codedHeight: 480,
-          // @ts-ignore
-          colorSpace: new VideoColorSpace({
-            fullRange: true,
-            matrix: "bt709",
-            primaries: "bt709",
-            transfer: "bt709"
-          })
         });
         console.log("configured video decoder");
         return newEncoder;
       });
     }
-  }, [lastMessage, setMessageHistory]);
+  }, [lastMessage, videoDecoder]);
 
   const handleClickChangeSocketUrl = useCallback(() =>
     setSocketUrl(webSocketURL), []);
-
-  const handleClickSendMessage = useCallback(() =>
-    sendMessage('Hello'), []);
 
   const connectionStatus = {
     [ReadyState.CONNECTING]: 'Connecting',

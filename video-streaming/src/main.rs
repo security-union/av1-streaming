@@ -2,26 +2,35 @@
 extern crate log;
 
 use base64::encode;
+use bus::{BusReader, Bus};
 use nokhwa::{Camera, CameraFormat, FrameFormat};
 use rav1e::*;
-use rav1e::prelude::{ChromaSampling, ColorDescription, ColorPrimaries, TransferCharacteristics, MatrixCoefficients};
 use rav1e::{config::SpeedSettings, prelude::FrameType};
 use serde::{Deserialize, Serialize};
 use serde_json;
+use warp::http;
+use std::rc::Rc;
+use std::sync::{Mutex, Arc};
 use std::thread;
 use std::sync::mpsc::{self, Sender, Receiver};
-use image::{ImageBuffer, Rgb, flat};
+use std::time::{SystemTime, Instant, Duration};
+use image::{Rgb};
+use futures_util::{StreamExt, SinkExt};
+use warp::{Filter, ws::{WebSocket, Message}};
+
+
 
 #[derive(Serialize, Deserialize, Debug)]
 struct VideoPacket {
-    data: String,
+    data: Option<String>,
     frameType: String,
+    epochTime: Duration,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     env_logger::init();
     let mut enc = EncoderConfig::default();
-    let nc = nats::connect("nats:4222").unwrap();
     let width = 640;
     let height = 480;
 
@@ -39,17 +48,20 @@ fn main() {
     enc.quantizer = 50;
     enc.still_picture = false;
     enc.tiles = 8;
-    enc.chroma_sampling = ChromaSampling::Cs420;
-    enc.color_description = Some(ColorDescription {
-        color_primaries: ColorPrimaries::BT709,
-        transfer_characteristics: TransferCharacteristics::BT709,
-        matrix_coefficients: MatrixCoefficients::BT709 
-    });
-    
+    // enc.chroma_sampling = ChromaSampling::Cs420;
+    // enc.color_description = Some(ColorDescription {
+    //     color_primaries: ColorPrimaries::BT709,
+    //     transfer_characteristics: TransferCharacteristics::BT709,
+    //     matrix_coefficients: MatrixCoefficients::BT709 
+    // });
+    let bus: Arc<Mutex<Bus<String>>>  = Arc::new(Mutex::new(bus::Bus::new(10)));
+    let bus_copy = bus.clone();
+    let add_bus = warp::any().map(move || bus.clone());
 
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
 
     let (tx, rx): (Sender<Vec<Vec<u8>>>, Receiver<Vec<Vec<u8>>>) = mpsc::channel();
+    
 
     let write_thread = thread::spawn(move || {
         info!(r#"write thread: Opening camera"#);
@@ -75,14 +87,14 @@ fn main() {
         }
     });
 
+  
     let read_thread = thread::spawn(move || {
         let mut ctx: Context<u8> = cfg.new_context().unwrap();
-
         loop {
             let planes = rx.recv().unwrap();
             info!("read thread: Creating new frame");
             let mut frame = ctx.new_frame();
-            
+            let encoding_time = Instant::now();
             for (dst, src) in frame.planes.iter_mut().zip(planes) {
                 dst.copy_from_raw_u8(&src, enc.width, 1);
             }
@@ -103,20 +115,24 @@ fn main() {
             info!("read thread: receiving encoded frame");
             match ctx.receive_packet() {
                 Ok(pkt) => {
+                    warn!("time encoding {:?}",  encoding_time.elapsed());
                     info!("read thread: base64 Encoding packet {}", pkt.input_frameno);
                     let frame_type = if pkt.frame_type == FrameType::KEY {
                         "key"
                     } else {
                         "delta"
                     };
+                    let time_serializing = Instant::now();
                     let data = encode(pkt.data);
                     info!("read thread: base64 Encoded packet {}", pkt.input_frameno);
                     let frame = VideoPacket {
-                        data,
+                        data: Some(data),
                         frameType: frame_type.to_string(),
+                        epochTime: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap()
                     };
                     let json = serde_json::to_string(&frame).unwrap();
-                    nc.publish("video.1", json).unwrap();
+                    bus_copy.lock().unwrap().broadcast(json);
+                    warn!("time serializing {:?}", time_serializing.elapsed());
                 }
                 Err(e) => match e {
                     EncoderStatus::LimitReached => {
@@ -131,6 +147,17 @@ fn main() {
             }
         }
     });
+
+    let routes = warp::path("ws")
+         // The `ws()` filter will prepare the Websocket handshake.
+        .and(warp::ws())
+        .and(add_bus)
+        .map( |ws: warp::ws::Ws, bus: Arc<Mutex<Bus<String>>>| {
+            // And then our closure will be called when it completes...
+            let reader = bus.lock().unwrap().add_rx();
+            ws.on_upgrade(|ws| client_connection(ws, reader))
+        });
+    warp::serve(routes).run(([0, 0, 0, 0], 8080)).await;
     write_thread.join().unwrap();
     read_thread.join().unwrap();
 }
@@ -148,3 +175,15 @@ fn to_ycbcr(pixel: &Rgb<u8>) -> (u8, u8, u8) {
   
     return (clamp(y), clamp(cb), clamp(cr));
   }
+
+
+pub async fn client_connection(ws: WebSocket, mut reader: BusReader<String>) {
+    println!("establishing client connection... {:?}", ws);
+    let (mut client_ws_sender, _client_ws_rcv) = ws.split();
+
+    loop {
+       let next = reader.recv().unwrap();
+        info!("Forwarding video message");
+        client_ws_sender.send(Message::text(next)).await.unwrap();
+    }
+}
