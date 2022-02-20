@@ -22,13 +22,14 @@ export const WebSocketDemo = () => {
   const {
     sendMessage,
     lastMessage,
+    lastJsonMessage,
     readyState,
   } = useWebSocket(socketUrl);
 
   useEffect(() => {
     try {
+      const payload = lastJsonMessage;
       if (BROWSER_TEST) {
-        const payload = JSON.parse(lastMessage?.data); 
         const data = toByteArray(payload.data);
         const chunk = new EncodedVideoChunk({
           timestamp: payload.timestamp,
@@ -41,8 +42,7 @@ export const WebSocketDemo = () => {
         }
         // @ts-ignore
         videoDecoder.decode(chunk);
-      } else {
-          const payload = JSON.parse(lastMessage?.data);
+      } else {  
           console.log("lag ", Date.now() / 1000 - (payload.epochTime.secs + Math.pow(payload.epochTime.nanos, -9)));
           if (!payload.data) {
             console.error("no data");
@@ -89,7 +89,7 @@ export const WebSocketDemo = () => {
         return newEncoder;
       });
     }
-  }, [lastMessage, videoDecoder]);
+  }, [lastJsonMessage, videoDecoder]);
 
   const handleClickChangeSocketUrl = useCallback(() =>
     setSocketUrl(webSocketURL), []);
