@@ -5,7 +5,12 @@ import {toByteArray, fromByteArray} from 'base64-js';
 
 const BROWSER_TEST = false;
 const webSocketURL = (BROWSER_TEST) ? 'ws://localhost:8080' : 'ws://localhost:8080/ws';
-let codec_string = "av01.0.01M.08";
+let codec_string = "av01.0.01M.08"; 
+// av01: AV1
+// 0 profile: main profile
+// 01 level: level2.1 
+// M tier: Main tier
+// 08 bit depth = 8 bits
 
 export const WebSocketDemo = () => {
   //Public API that will echo messages sent to it back to the client
@@ -77,7 +82,16 @@ export const WebSocketDemo = () => {
           }
         });
         newEncoder.configure({
-          codec: codec_string
+          codec: codec_string,
+          codedWidth: 640,
+          codedHeight: 480,
+          // @ts-ignore
+          colorSpace: new VideoColorSpace({
+            fullRange: true,
+            matrix: "bt709",
+            primaries: "bt709",
+            transfer: "bt709"
+          })
         });
         console.log("configured video decoder");
         return newEncoder;

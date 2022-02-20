@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::thread;
 use std::sync::mpsc::{self, Sender, Receiver};
-use image::{ImageBuffer, Rgb};
+use image::{ImageBuffer, Rgb, flat};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct VideoPacket {
@@ -21,7 +21,7 @@ struct VideoPacket {
 fn main() {
     env_logger::init();
     let mut enc = EncoderConfig::default();
-    let nc = nats::connect("nats:4222").unwrap();
+    let nc = nats::connect(env!("NATS_URL")).unwrap();
     let width = 640;
     let height = 480;
 
@@ -49,7 +49,7 @@ fn main() {
 
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
 
-    let (tx, rx): (Sender<ImageBuffer<Rgb<u8>, Vec<u8>>>, Receiver<ImageBuffer<Rgb<u8>, Vec<u8>>>) = mpsc::channel();
+    let (tx, rx): (Sender<Vec<Vec<u8>>>, Receiver<Vec<Vec<u8>>>) = mpsc::channel();
 
     let write_thread = thread::spawn(move || {
         info!(r#"write thread: Opening camera"#);
@@ -61,10 +61,17 @@ fn main() {
         camera.open_stream().unwrap();
         info!("write thread: Starting write loop");
         loop {
-            // info!("write thread: Waiting for camera frame");
-            let frame = camera.frame().unwrap();
-            // info!("write thread: sending frame");
-            tx.send(frame).unwrap();
+            let mut frame = camera.frame().unwrap();
+            let mut r_slice: Vec<u8> = vec!();
+            let mut g_slice: Vec<u8> = vec!();
+            let mut b_slice: Vec<u8> = vec!();
+            for pixel in frame.pixels_mut() {
+                let (r, g, b) = to_ycbcr(pixel);
+                r_slice.push(r);
+                g_slice.push(g);
+                b_slice.push(b);
+            }
+            tx.send(vec!(r_slice, g_slice, b_slice)).unwrap();
         }
     });
 
@@ -72,16 +79,15 @@ fn main() {
         let mut ctx: Context<u8> = cfg.new_context().unwrap();
 
         loop {
-            let frame = rx.recv().unwrap();
+            let planes = rx.recv().unwrap();
             info!("read thread: Creating new frame");
-            let mut encoding_frame = ctx.new_frame();
-            let flat_samples = frame.as_flat_samples();
-            for p in &mut encoding_frame.planes {
-                
-                let stride = (enc.width + p.cfg.xdec) >> p.cfg.xdec;
-                p.copy_from_raw_u8(flat_samples.samples, stride, 1);
-            } 
-            match ctx.send_frame(encoding_frame) {
+            let mut frame = ctx.new_frame();
+            
+            for (dst, src) in frame.planes.iter_mut().zip(planes) {
+                dst.copy_from_raw_u8(&src, enc.width, 1);
+            }
+
+            match ctx.send_frame(frame) {
                 Ok(_) => {
                     info!("read thread: queued frame");
                 }
@@ -128,3 +134,17 @@ fn main() {
     write_thread.join().unwrap();
     read_thread.join().unwrap();
 }
+
+fn clamp(val: f32) -> u8 {
+    return (val.round() as u8).max(0_u8).min(255_u8);
+  }
+
+fn to_ycbcr(pixel: &Rgb<u8>) -> (u8, u8, u8) {
+    let [r, g, b] = pixel.0;
+  
+    let y = 16_f32 + (65.481 * r as f32 + 128.553 * g as f32 + 24.966 * b as f32) / 255_f32;
+    let cb = 128_f32 + (-37.797 * r as f32 - 74.203 * g as f32 + 112.000 * b as f32) / 255_f32;
+    let cr = 128_f32 + (112.000 * r as f32 - 93.786 * g as f32 - 18.214 * b as f32) / 255_f32;
+  
+    return (clamp(y), clamp(cb), clamp(cr));
+  }
