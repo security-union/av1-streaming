@@ -29,8 +29,8 @@ export const WebSocketDemo = () => {
   useEffect(() => {
     try {
       const payload = lastJsonMessage;
+      const data = toByteArray(payload.data);
       if (BROWSER_TEST) {
-        const data = toByteArray(payload.data);
         const chunk = new EncodedVideoChunk({
           timestamp: payload.timestamp,
           type: payload.frameType,
@@ -48,7 +48,6 @@ export const WebSocketDemo = () => {
             console.error("no data");
             return
           }
-          const data = toByteArray(payload.data);
           const chunk = new EncodedVideoChunk({
             timestamp: 0,
             type: payload.frameType,
