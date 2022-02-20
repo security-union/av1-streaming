@@ -2,15 +2,17 @@
 extern crate log;
 
 use base64::encode;
+use image::{flat, ImageBuffer, Rgb};
 use nokhwa::{Camera, CameraFormat, FrameFormat};
+use rav1e::prelude::{
+    ChromaSampling, ColorDescription, ColorPrimaries, MatrixCoefficients, TransferCharacteristics,
+};
 use rav1e::*;
-use rav1e::prelude::{ChromaSampling, ColorDescription, ColorPrimaries, TransferCharacteristics, MatrixCoefficients};
 use rav1e::{config::SpeedSettings, prelude::FrameType};
 use serde::{Deserialize, Serialize};
 use serde_json;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
-use std::sync::mpsc::{self, Sender, Receiver};
-use image::{ImageBuffer, Rgb, flat};
 
 #[derive(Serialize, Deserialize, Debug)]
 struct VideoPacket {
@@ -43,9 +45,8 @@ fn main() {
     enc.color_description = Some(ColorDescription {
         color_primaries: ColorPrimaries::BT709,
         transfer_characteristics: TransferCharacteristics::BT709,
-        matrix_coefficients: MatrixCoefficients::BT709 
+        matrix_coefficients: MatrixCoefficients::BT709,
     });
-    
 
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
 
@@ -54,24 +55,29 @@ fn main() {
     let write_thread = thread::spawn(move || {
         info!(r#"write thread: Opening camera"#);
         let mut camera = Camera::new(
-            0,                                                             // index
-            Some(CameraFormat::new_from(width as u32, height as u32, FrameFormat::YUYV, 30)), // format
+            0, // index
+            Some(CameraFormat::new_from(
+                width as u32,
+                height as u32,
+                FrameFormat::YUYV,
+                30,
+            )), // format
         )
         .unwrap();
         camera.open_stream().unwrap();
         info!("write thread: Starting write loop");
         loop {
             let mut frame = camera.frame().unwrap();
-            let mut r_slice: Vec<u8> = vec!();
-            let mut g_slice: Vec<u8> = vec!();
-            let mut b_slice: Vec<u8> = vec!();
+            let mut r_slice: Vec<u8> = vec![];
+            let mut g_slice: Vec<u8> = vec![];
+            let mut b_slice: Vec<u8> = vec![];
             for pixel in frame.pixels_mut() {
                 let (r, g, b) = to_ycbcr(pixel);
                 r_slice.push(r);
                 g_slice.push(g);
                 b_slice.push(b);
             }
-            tx.send(vec!(r_slice, g_slice, b_slice)).unwrap();
+            tx.send(vec![r_slice, g_slice, b_slice]).unwrap();
         }
     });
 
@@ -82,7 +88,7 @@ fn main() {
             let planes = rx.recv().unwrap();
             info!("read thread: Creating new frame");
             let mut frame = ctx.new_frame();
-            
+
             for (dst, src) in frame.planes.iter_mut().zip(planes) {
                 dst.copy_from_raw_u8(&src, enc.width, 1);
             }
@@ -137,14 +143,14 @@ fn main() {
 
 fn clamp(val: f32) -> u8 {
     return (val.round() as u8).max(0_u8).min(255_u8);
-  }
+}
 
 fn to_ycbcr(pixel: &Rgb<u8>) -> (u8, u8, u8) {
     let [r, g, b] = pixel.0;
-  
+
     let y = 16_f32 + (65.481 * r as f32 + 128.553 * g as f32 + 24.966 * b as f32) / 255_f32;
     let cb = 128_f32 + (-37.797 * r as f32 - 74.203 * g as f32 + 112.000 * b as f32) / 255_f32;
     let cr = 128_f32 + (112.000 * r as f32 - 93.786 * g as f32 - 18.214 * b as f32) / 255_f32;
-  
+
     return (clamp(y), clamp(cb), clamp(cr));
-  }
+}
