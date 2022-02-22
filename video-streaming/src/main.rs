@@ -55,8 +55,11 @@ async fn main() {
     //     matrix_coefficients: MatrixCoefficients::BT709 
     // });
     let bus: Arc<Mutex<Bus<String>>>  = Arc::new(Mutex::new(bus::Bus::new(10)));
+    let counter: Arc<Mutex<u16>> = Arc::new(Mutex::new(0));
     let bus_copy = bus.clone();
     let add_bus = warp::any().map(move || bus.clone());
+    let add_counter_copy = counter.clone();
+    let add_counter = warp::any().map(move || add_counter_copy.clone());
 
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
 
@@ -110,10 +113,13 @@ async fn main() {
         }
     });
 
-  
     let read_thread = thread::spawn(move || {
         let mut ctx: Context<u8> = cfg.new_context().unwrap();
         loop {
+            let counter = counter.lock().unwrap();
+            if *counter <= 0 {
+                break;
+            }
             let planes = rx.recv().unwrap();
             info!("read thread: Creating new frame");
             let mut frame = ctx.new_frame();
@@ -176,9 +182,11 @@ async fn main() {
          // The `ws()` filter will prepare the Websocket handshake.
         .and(warp::ws())
         .and(add_bus)
-        .map( |ws: warp::ws::Ws, bus: Arc<Mutex<Bus<String>>>| {
+        .and(add_counter)
+        .map( |ws: warp::ws::Ws, bus: Arc<Mutex<Bus<String>>>, counter: Arc<Mutex<u16>>| {
             // And then our closure will be called when it completes...
             let reader = bus.lock().unwrap().add_rx();
+
             ws.on_upgrade(|ws| client_connection(ws, reader))
         });
     warp::serve(routes).run(([0, 0, 0, 0], 8080)).await;
