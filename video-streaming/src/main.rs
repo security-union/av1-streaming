@@ -8,12 +8,10 @@ use rav1e::*;
 use rav1e::{config::SpeedSettings, prelude::FrameType};
 use serde::{Deserialize, Serialize};
 use serde_json;
-use warp::http;
-use std::rc::Rc;
 use std::sync::{Mutex, Arc};
 use std::thread;
 use std::sync::mpsc::{self, Sender, Receiver};
-use std::time::{SystemTime, Instant, Duration};
+use std::time::{SystemTime, Instant, Duration, UNIX_EPOCH};
 use image::{Rgb};
 use futures_util::{StreamExt, SinkExt};
 use warp::{Filter, ws::{WebSocket, Message}};
@@ -26,6 +24,8 @@ struct VideoPacket {
     frameType: String,
     epochTime: Duration,
 }
+
+
 
 #[tokio::main]
 async fn main() {
@@ -40,12 +40,12 @@ async fn main() {
     enc.error_resilient = true;
     enc.speed_settings = SpeedSettings::from_preset(10);
     enc.rdo_lookahead_frames = 1;
-    enc.bitrate = 150;
+    enc.bitrate = 256;
     enc.min_key_frame_interval = 20;
     enc.max_key_frame_interval = 50;
     enc.low_latency = true;
-    enc.min_quantizer = 30;
-    enc.quantizer = 100;
+    enc.min_quantizer = 100;
+    enc.quantizer = 120;
     enc.still_picture = false;
     enc.tiles = 8;
     // enc.chroma_sampling = ChromaSampling::Cs420;
@@ -61,13 +61,36 @@ async fn main() {
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
 
     let (tx, rx): (Sender<Vec<Vec<u8>>>, Receiver<Vec<Vec<u8>>>) = mpsc::channel();
+    let (fps_tx, fps_rx): (Sender<u128>, Receiver<u128>) = mpsc::channel();
+
+    let fps_thread = thread::spawn(move || {
+        let mut num_frames = 0;
+        let mut now_plus_1 = since_the_epoch().as_millis() + 1000;
+        println!("Starting fps loop");
+        loop {
+        match fps_rx.recv() {
+            Ok(dur) => {
+                if now_plus_1 < dur {
+                    println!("FPS: {:?}", num_frames);
+                    num_frames = 0;
+                    now_plus_1 = since_the_epoch().as_millis() + 1000;
+                } else {    
+                    num_frames += 1;
+                }
+            },
+            Err(e) => {
+                println!("Receive error: {:?}", e);
+            }
+        }
+    }
+    });
     
 
     let write_thread = thread::spawn(move || {
         info!(r#"write thread: Opening camera"#);
         let mut camera = Camera::new(
             0,                                                             // index
-            Some(CameraFormat::new_from(width as u32, height as u32, FrameFormat::MJPEG, 5)), // format
+            Some(CameraFormat::new_from(width as u32, height as u32, FrameFormat::MJPEG, 10)), // format
         )
         .unwrap();
         camera.open_stream().unwrap();
@@ -128,11 +151,12 @@ async fn main() {
                     let frame = VideoPacket {
                         data: Some(data),
                         frameType: frame_type.to_string(),
-                        epochTime: SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap()
+                        epochTime: since_the_epoch(),
                     };
                     let json = serde_json::to_string(&frame).unwrap();
                     bus_copy.lock().unwrap().broadcast(json);
                     warn!("time serializing {:?}", time_serializing.elapsed());
+                    fps_tx.send(since_the_epoch().as_millis()).unwrap();
                 }
                 Err(e) => match e {
                     EncoderStatus::LimitReached => {
@@ -160,6 +184,7 @@ async fn main() {
     warp::serve(routes).run(([0, 0, 0, 0], 8080)).await;
     write_thread.join().unwrap();
     read_thread.join().unwrap();
+    fps_thread.join().unwrap();
 }
 
 fn clamp(val: f32) -> u8 {
@@ -188,4 +213,8 @@ pub async fn client_connection(ws: WebSocket, mut reader: BusReader<String>) {
         client_ws_sender.send(Message::text(next)).await.unwrap();
         warn!("web_socket serializing {:?}", time_serializing.elapsed());
     }
+}
+
+pub fn since_the_epoch() -> Duration {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
 }
