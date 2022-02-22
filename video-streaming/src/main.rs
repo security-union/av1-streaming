@@ -45,7 +45,7 @@ async fn main() {
     enc.max_key_frame_interval = 50;
     enc.low_latency = true;
     enc.min_quantizer = 30;
-    enc.quantizer = 50;
+    enc.quantizer = 100;
     enc.still_picture = false;
     enc.tiles = 8;
     // enc.chroma_sampling = ChromaSampling::Cs420;
@@ -67,7 +67,7 @@ async fn main() {
         info!(r#"write thread: Opening camera"#);
         let mut camera = Camera::new(
             0,                                                             // index
-            Some(CameraFormat::new_from(width as u32, height as u32, FrameFormat::MJPEG, 30)), // format
+            Some(CameraFormat::new_from(width as u32, height as u32, FrameFormat::MJPEG, 5)), // format
         )
         .unwrap();
         camera.open_stream().unwrap();
