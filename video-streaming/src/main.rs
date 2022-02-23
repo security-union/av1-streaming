@@ -88,7 +88,7 @@ async fn main() {
 
     let encoding_thread = thread::spawn(move || {
         loop {
-            {   
+            {
                 info!("waiting for browser...");
                 let counter = counter.lock().unwrap();
                 if *counter <= 0 {
@@ -115,7 +115,7 @@ async fn main() {
                 if *counter <= 0 {
                     warn!("stopping the recording");
                     break;
-                }   
+                }
                 info!("grabbing frame");
                 let mut frame = camera.frame().unwrap();
                 let mut r_slice: Vec<u8> = vec![];
@@ -238,20 +238,16 @@ pub async fn client_connection(
         let next = reader.recv().unwrap();
         info!("Forwarding video message");
         let time_serializing = Instant::now();
-        match client_ws_sender
-            .send(Message::text(next))
-            .await {
-                Ok(_) => {
-
-                }
-                Err(e) => {
-                    info!("blocking before removing connection {:?}", counter);
-                    let mut counter_ref = counter.lock().unwrap();
-                    *counter_ref = *counter_ref - 1;
-                    info!("after removing connection {:?}", *counter_ref);
-                    break;
-                }
+        match client_ws_sender.send(Message::text(next)).await {
+            Ok(_) => {}
+            Err(e) => {
+                info!("blocking before removing connection {:?}", counter);
+                let mut counter_ref = counter.lock().unwrap();
+                *counter_ref = *counter_ref - 1;
+                info!("after removing connection {:?}", *counter_ref);
+                break;
             }
+        }
         warn!("web_socket serializing {:?}", time_serializing.elapsed());
     }
 }
