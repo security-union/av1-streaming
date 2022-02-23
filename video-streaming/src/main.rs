@@ -241,7 +241,7 @@ pub async fn client_connection(
         let time_serializing = Instant::now();
         match client_ws_sender.send(Message::text(next)).await {
             Ok(_) => {}
-            Err(e) => {
+            Err(_e) => {
                 info!("blocking before removing connection {:?}", counter);
                 let mut counter_ref = counter.lock().unwrap();
                 *counter_ref = *counter_ref - 1;
@@ -249,7 +249,7 @@ pub async fn client_connection(
                 break;
             }
         }
-        warn!("web_socket serializing {:?}", time_serializing.elapsed());
+        debug!("web_socket serializing {:?}", time_serializing.elapsed());
     }
 }
 

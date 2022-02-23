@@ -33,7 +33,13 @@ export const WebSocketDemo = () => {
   const webcamRef = React.useRef(null);
   const [videoDecoder, setVideoDecoder] = useState(null);
 
-  const { sendMessage, lastJsonMessage, readyState } = useWebSocket(socketUrl);
+  const { sendMessage, lastJsonMessage, readyState } = useWebSocket(socketUrl, {
+    reconnectInterval: 2000,
+    retryOnError: true,
+    shouldReconnect: (event) => {
+      return true;
+    }
+  });
 
   useEffect(() => {
     try {
@@ -64,9 +70,6 @@ export const WebSocketDemo = () => {
           duration: 0,
           data,
         });
-        if (payload.type === "key") {
-          console.log("got key message");
-        }
         // @ts-ignore
         videoDecoder.decode(chunk);
       }
