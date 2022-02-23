@@ -67,35 +67,36 @@ async fn main() {
     let fps_thread = thread::spawn(move || {
         let mut num_frames = 0;
         let mut now_plus_1 = since_the_epoch().as_millis() + 1000;
-        // warn!("Starting fps loop");
-        // loop {
-        //     match fps_rx.recv() {
-        //         Ok(dur) => {
-        //             if now_plus_1 < dur {
-        //                 // warn!("FPS: {:?}", num_frames);
-        //                 num_frames = 0;
-        //                 now_plus_1 = since_the_epoch().as_millis() + 1000;
-        //             } else {
-        //                 num_frames += 1;
-        //             }
-        //         }
-        //         Err(e) => {
-        //             error!("Receive error: {:?}", e);
-        //         }
-        //     }
-        // }
+        warn!("Starting fps loop");
+        loop {
+            match fps_rx.recv() {
+                Ok(dur) => {
+                    if now_plus_1 < dur {
+                        warn!("FPS: {:?}", num_frames);
+                        num_frames = 0;
+                        now_plus_1 = since_the_epoch().as_millis() + 1000;
+                    } else {
+                        num_frames += 1;
+                    }
+                }
+                Err(e) => {
+                    error!("Receive error: {:?}", e);
+                }
+            }
+        }
     });
 
     let encoding_thread = thread::spawn(move || {
         loop {
             {   
-                info!("encoding thread: blocking before locking");
+                info!("waiting for browser...");
                 let counter = counter.lock().unwrap();
                 if *counter <= 0 {
-                    thread::sleep(Duration::from_secs(1));
+                    thread::sleep(Duration::from_millis(200));
                     continue;
                 }
             }
+            let fps_tx_copy = fps_tx.clone();
             let mut ctx: Context<u8> = cfg.new_context().unwrap();
             let mut camera = Camera::new(
                 0, // index
@@ -103,7 +104,7 @@ async fn main() {
                     width as u32,
                     height as u32,
                     FrameFormat::MJPEG,
-                    30,
+                    10,
                 )), // format
             )
             .unwrap();
@@ -168,7 +169,7 @@ async fn main() {
                         let json = serde_json::to_string(&frame).unwrap();
                         bus_copy.lock().unwrap().broadcast(json);
                         // warn!("time serializing {:?}", time_serializing.elapsed());
-                        fps_tx.send(since_the_epoch().as_millis()).unwrap();
+                        fps_tx_copy.send(since_the_epoch().as_millis()).unwrap();
                     }
                     Err(e) => match e {
                         EncoderStatus::LimitReached => {
