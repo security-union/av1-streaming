@@ -203,7 +203,8 @@ async fn main() {
                 // And then our closure will be called when it completes...
                 let reader = bus.lock().unwrap().add_rx();
                 info!("calling client connection");
-                ws.on_upgrade(|ws| client_connection(ws, reader, counter))
+                let counter_copy = counter.clone();
+                ws.on_upgrade(|ws| client_connection(ws, reader, counter_copy))
             },
         );
     warp::serve(routes).run(([0, 0, 0, 0], 8080)).await;
@@ -232,6 +233,7 @@ pub async fn client_connection(
 ) {
     println!("establishing client connection... {:?}", ws);
     let (mut client_ws_sender, _client_ws_rcv) = ws.split();
+    
     {
         warn!("blocking before adding connection");
         let mut counter_ref = counter.lock().unwrap();
@@ -239,6 +241,8 @@ pub async fn client_connection(
         warn!("after adding connection {:?}", *counter_ref);
         drop(counter_ref);
     }
+
+    let counter = counter.clone();
     loop {
         let next = reader.recv().unwrap();
         info!("Forwarding video message");
@@ -246,15 +250,14 @@ pub async fn client_connection(
         match client_ws_sender.send(Message::text(next)).await {
             Ok(_) => {}
             Err(e) => {
-                // warn!("blocking before removing connection");
-                // // let mut counter_ref = counter.lock().unwrap();
-                // // *counter_ref = *counter_ref - 1;
-                // // warn!("after removing connection {:?}", *counter_ref);
-                // // drop(counter_ref);
+                warn!("blocking before removing connection");
+                let mut counter_ref = counter.lock().unwrap();
+                *counter_ref = *counter_ref - 1;
+                warn!("after removing connection {:?}", *counter_ref);
+                drop(counter_ref);
                 break;
             }
         }
-        info!("web_socket serializing {:?}", time_serializing.elapsed());
     }
 }
 
