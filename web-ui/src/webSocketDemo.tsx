@@ -4,8 +4,7 @@ import Webcam from 'react-webcam';
 import {toByteArray, fromByteArray} from 'base64-js';
 
 const BROWSER_TEST = false;
-const LOCALHOST_TEST = true;
-// const webSocketURL = (BROWSER_TEST) ? 'ws://localhost:8080' : 'ws://localhost:8080/ws';
+const LOCALHOST_TEST = false;
 const webSocketURL = (BROWSER_TEST || LOCALHOST_TEST) ? `ws://localhost:8080${LOCALHOST_TEST ? '/ws': ''}` : 'ws://192.168.7.233:8080/ws';
 let codec_string = "av01.0.01M.08"; 
 // av01: AV1
