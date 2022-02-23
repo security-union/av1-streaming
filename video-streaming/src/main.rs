@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::{thread, env};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use warp::{
     ws::{Message, WebSocket},
@@ -32,6 +32,12 @@ async fn main() {
     let mut enc = EncoderConfig::default();
     let width = 640;
     let height = 480;
+    let framerate: u32 = env::var("FRAMERATE")
+    .ok()
+    .map(|n| n.parse::<u32>().ok())
+    .flatten()
+    .unwrap_or(10u32);
+    warn!("Framerate {framerate}");
 
     enc.width = width;
     enc.height = height;
@@ -47,12 +53,7 @@ async fn main() {
     enc.quantizer = 120;
     enc.still_picture = false;
     enc.tiles = 8;
-    // enc.chroma_sampling = ChromaSampling::Cs420;
-    // enc.color_description = Some(ColorDescription {
-    //     color_primaries: ColorPrimaries::BT709,
-    //     transfer_characteristics: TransferCharacteristics::BT709,
-    //     matrix_coefficients: MatrixCoefficients::BT709
-    // });
+
     let bus: Arc<Mutex<Bus<String>>> = Arc::new(Mutex::new(bus::Bus::new(10)));
     let counter: Arc<Mutex<u16>> = Arc::new(Mutex::new(0));
     let bus_copy = bus.clone();
@@ -104,7 +105,7 @@ async fn main() {
                     width as u32,
                     height as u32,
                     FrameFormat::MJPEG,
-                    10,
+                    framerate,
                 )), // format
             )
             .unwrap();
@@ -128,7 +129,7 @@ async fn main() {
                     b_slice.push(b);
                 }
                 let planes = vec![r_slice, g_slice, b_slice];
-                // info!("read thread: Creating new frame");
+                debug!("read thread: Creating new frame");
                 let mut frame = ctx.new_frame();
                 let encoding_time = Instant::now();
                 for (dst, src) in frame.planes.iter_mut().zip(planes) {
@@ -137,22 +138,22 @@ async fn main() {
 
                 match ctx.send_frame(frame) {
                     Ok(_) => {
-                        // info!("read thread: queued frame");
+                        debug!("read thread: queued frame");
                     }
                     Err(e) => match e {
                         EncoderStatus::EnoughData => {
-                            // info!("read thread: Unable to append frame to the internal queue");
+                            debug!("read thread: Unable to append frame to the internal queue");
                         }
                         _ => {
                             panic!("read thread: Unable to send frame");
                         }
                     },
                 }
-                // info!("read thread: receiving encoded frame");
+                debug!("read thread: receiving encoded frame");
                 match ctx.receive_packet() {
                     Ok(pkt) => {
-                        // warn!("time encoding {:?}", encoding_time.elapsed());
-                        // info!("read thread: base64 Encoding packet {}", pkt.input_frameno);
+                        debug!("time encoding {:?}", encoding_time.elapsed());
+                        debug!("read thread: base64 Encoding packet {}", pkt.input_frameno);
                         let frame_type = if pkt.frame_type == FrameType::KEY {
                             "key"
                         } else {
@@ -160,7 +161,7 @@ async fn main() {
                         };
                         let time_serializing = Instant::now();
                         let data = encode(pkt.data);
-                        // info!("read thread: base64 Encoded packet {}", pkt.input_frameno);
+                        debug!("read thread: base64 Encoded packet {}", pkt.input_frameno);
                         let frame = VideoPacket {
                             data: Some(data),
                             frameType: frame_type.to_string(),
@@ -168,7 +169,7 @@ async fn main() {
                         };
                         let json = serde_json::to_string(&frame).unwrap();
                         bus_copy.lock().unwrap().broadcast(json);
-                        // warn!("time serializing {:?}", time_serializing.elapsed());
+                        debug!("time serializing {:?}", time_serializing.elapsed());
                         fps_tx_copy.send(since_the_epoch().as_millis()).unwrap();
                     }
                     Err(e) => match e {

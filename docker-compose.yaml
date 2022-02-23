@@ -7,6 +7,7 @@ services:
     command: cargo watch -x 'run  --release --bin video-streaming'
     environment:
       - RUST_LOG=info
+      - FRAMERATE=30
     volumes:
       - /app/target
       - /dev/video0:/dev/video0
@@ -20,3 +21,7 @@ services:
       - 3000:3000
     volumes:
       - ./web-ui/src:/app/src
+    command: npm start
+    environment:
+      - REACT_APP_USE_LOCALHOST=true
+      - REACT_APP_BROWSER_TEST=false
