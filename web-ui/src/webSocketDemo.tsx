@@ -1,12 +1,12 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import useWebSocket, { ReadyState } from "react-use-websocket";
 import Webcam from "react-webcam";
 import { toByteArray, fromByteArray } from "base64-js";
-import { env } from "process";
 
-const BROWSER_TEST = false;
-const LOCALHOST_TEST = env.REACT_APP_USE_LOCALHOST || false;
-const RASPBERRY_PI_IP = env.REACT_APP_RASPBERRY_PI_IP || "192.168.7.233";
+// BROWSER_TEST is used to test encoding and decoding vp1 video directly with the browser.
+const BROWSER_TEST: boolean = process.env.REACT_APP_BROWSER_TEST === 'true';
+const LOCALHOST_TEST: boolean = process.env.REACT_APP_USE_LOCALHOST === 'true';
+const RASPBERRY_PI_IP = process.env.REACT_APP_RASPBERRY_PI_IP || "192.168.7.233";
 let webSocketURL = "ws://localhost:8080";
 if (LOCALHOST_TEST) {
   webSocketURL = webSocketURL + "/ws";
@@ -21,9 +21,14 @@ let codec_string = "av01.0.01M.08";
 // M tier: Main tier
 // 08 bit depth = 8 bits
 
+console.log("Env:");
+console.log(`BROWSER_TEST: ${BROWSER_TEST}\nLOCALHOST_TEST: ${LOCALHOST_TEST}`);
+console.log(`RASPBERRY_PI_IP: ${RASPBERRY_PI_IP}\n websocketURL: ${webSocketURL}`);
+
+
 export const WebSocketDemo = () => {
   //Public API that will echo messages sent to it back to the client
-  const [socketUrl, setSocketUrl] = useState(webSocketURL);
+  const [socketUrl] = useState(webSocketURL);
   const canvasRef = React.useRef(null);
   const webcamRef = React.useRef(null);
   const [videoDecoder, setVideoDecoder] = useState(null);
@@ -41,9 +46,6 @@ export const WebSocketDemo = () => {
           duration: payload.duration,
           data,
         });
-        if (payload.type === "key") {
-          console.log("got key message");
-        }
         // @ts-ignore
         videoDecoder.decode(chunk);
       } else {
@@ -96,11 +98,6 @@ export const WebSocketDemo = () => {
       });
     }
   }, [lastJsonMessage, videoDecoder]);
-
-  const handleClickChangeSocketUrl = useCallback(
-    () => setSocketUrl(webSocketURL),
-    []
-  );
 
   const connectionStatus = {
     [ReadyState.CONNECTING]: "Connecting",
@@ -157,12 +154,12 @@ export const WebSocketDemo = () => {
           }
 
           if (!capturing && pending_outputs <= 30) {
-            if (++frame_counter % 20 == 0) {
+            if (++frame_counter % 20 === 0) {
               console.log(frame_counter);
             }
 
             pending_outputs++;
-            const insert_keyframe = frame_counter % 50 == 0;
+            const insert_keyframe = frame_counter % 50 === 0;
             encoder.encode(value, { keyFrame: insert_keyframe });
           }
           value.close();
@@ -196,12 +193,9 @@ export const WebSocketDemo = () => {
       {BROWSER_TEST && <Webcam audio={false} ref={webcamRef} />}
       {BROWSER_TEST && capturing ? (
         <button onClick={handleStopCaptureClick}>Stop Capture</button>
-      ) : (
+      ) : ( BROWSER_TEST &&
         <button onClick={handleStartCaptureClick}>Start Capture</button>
       )}
-      <button onClick={handleClickChangeSocketUrl}>
-        Click Me to change Socket Url
-      </button>
       <span>The WebSocket is currently {connectionStatus}</span>
       <canvas ref={canvasRef} width={640} height={480} />
     </div>

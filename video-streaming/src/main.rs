@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::{env, thread};
 use warp::{
     ws::{Message, WebSocket},
     Filter,
@@ -30,6 +30,13 @@ struct VideoPacket {
 async fn main() {
     env_logger::init();
     let mut enc = EncoderConfig::default();
+    let framerate: u32 = env::var("FRAMERATE")
+        .ok()
+        .map(|n| n.parse::<u32>().ok())
+        .flatten()
+        .unwrap_or(10u32);
+    warn!("Framerate {framerate}");
+
     let width = 640;
     let height = 480;
 
@@ -89,7 +96,7 @@ async fn main() {
     let encoding_thread = thread::spawn(move || {
         loop {
             {
-                info!("waiting for browser...");
+                warn!("waiting for browser...");
                 thread::sleep(Duration::from_millis(200));
                 let counter = counter.lock().unwrap();
                 if *counter <= 0 {
@@ -104,13 +111,13 @@ async fn main() {
                     width as u32,
                     height as u32,
                     FrameFormat::MJPEG,
-                    10,
+                    framerate,
                 )), // format
             )
             .unwrap();
             camera.open_stream().unwrap();
             loop {
-                info!("blocking after starting camera");
+                info!("Recording");
                 let counter = counter.lock().unwrap();
                 if *counter <= 0 {
                     warn!("stopping the recording");
@@ -128,7 +135,6 @@ async fn main() {
                     b_slice.push(b);
                 }
                 let planes = vec![r_slice, g_slice, b_slice];
-                // info!("read thread: Creating new frame");
                 let mut frame = ctx.new_frame();
                 let encoding_time = Instant::now();
                 for (dst, src) in frame.planes.iter_mut().zip(planes) {
@@ -137,11 +143,11 @@ async fn main() {
 
                 match ctx.send_frame(frame) {
                     Ok(_) => {
-                        // info!("read thread: queued frame");
+                        info!("read thread: queued frame");
                     }
                     Err(e) => match e {
                         EncoderStatus::EnoughData => {
-                            // info!("read thread: Unable to append frame to the internal queue");
+                            error!("read thread: Unable to append frame to the internal queue");
                         }
                         _ => {
                             panic!("read thread: Unable to send frame");
@@ -151,8 +157,8 @@ async fn main() {
                 // info!("read thread: receiving encoded frame");
                 match ctx.receive_packet() {
                     Ok(pkt) => {
-                        // warn!("time encoding {:?}", encoding_time.elapsed());
-                        // info!("read thread: base64 Encoding packet {}", pkt.input_frameno);
+                        info!("time encoding {:?}", encoding_time.elapsed());
+                        info!("read thread: base64 Encoding packet {}", pkt.input_frameno);
                         let frame_type = if pkt.frame_type == FrameType::KEY {
                             "key"
                         } else {
@@ -228,10 +234,10 @@ pub async fn client_connection(
     println!("establishing client connection... {:?}", ws);
     let (mut client_ws_sender, _client_ws_rcv) = ws.split();
     {
-        info!("blocking before adding connection {:?}", counter);
+        warn!("blocking before adding connection");
         let mut counter_ref = counter.lock().unwrap();
         *counter_ref = *counter_ref + 1;
-        info!("after adding connection {:?}", *counter_ref);
+        warn!("after adding connection {:?}", *counter_ref);
         drop(counter_ref);
     }
     loop {
@@ -241,14 +247,15 @@ pub async fn client_connection(
         match client_ws_sender.send(Message::text(next)).await {
             Ok(_) => {}
             Err(e) => {
-                info!("blocking before removing connection {:?}", counter);
+                warn!("blocking before removing connection");
                 let mut counter_ref = counter.lock().unwrap();
                 *counter_ref = *counter_ref - 1;
-                info!("after removing connection {:?}", *counter_ref);
+                warn!("after removing connection {:?}", *counter_ref);
+                drop(counter_ref);
                 break;
             }
         }
-        warn!("web_socket serializing {:?}", time_serializing.elapsed());
+        info!("web_socket serializing {:?}", time_serializing.elapsed());
     }
 }
 
