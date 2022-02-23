@@ -88,14 +88,14 @@ async fn main() {
 
     let encoding_thread = thread::spawn(move || {
         loop {
-            // {   
-            //     info!("encoding thread: blocking before locking");
-            //     let counter = counter.lock().unwrap();
-            //     if *counter <= 0 {
-            //         thread::sleep(Duration::from_secs(1));
-            //         continue;
-            //     }
-            // }
+            {   
+                info!("encoding thread: blocking before locking");
+                let counter = counter.lock().unwrap();
+                if *counter <= 0 {
+                    thread::sleep(Duration::from_secs(1));
+                    continue;
+                }
+            }
             let mut ctx: Context<u8> = cfg.new_context().unwrap();
             let mut camera = Camera::new(
                 0, // index
@@ -112,9 +112,10 @@ async fn main() {
                 info!("blocking after starting camera");
                 let counter = counter.lock().unwrap();
                 if *counter <= 0 {
-                    // warn!("stopping the recording");
-                    // break;
+                    warn!("stopping the recording");
+                    break;
                 }   
+                info!("grabbing frame");
                 let mut frame = camera.frame().unwrap();
                 let mut r_slice: Vec<u8> = vec![];
                 let mut g_slice: Vec<u8> = vec![];
@@ -236,18 +237,20 @@ pub async fn client_connection(
         let next = reader.recv().unwrap();
         info!("Forwarding video message");
         let time_serializing = Instant::now();
-        client_ws_sender
+        match client_ws_sender
             .send(Message::text(next))
-            .await
-            .err()
-            .map(|e| {
-                info!("blocking before removing connection {:?}", counter);
-                let mut counter_ref = counter.lock().unwrap();
-                *counter_ref = *counter_ref - 1;
-                info!("after removing connection {:?}", *counter_ref);
-                drop(counter_ref);
-                panic!("panic");
-            });
+            .await {
+                Ok(_) => {
+
+                }
+                Err(e) => {
+                    info!("blocking before removing connection {:?}", counter);
+                    let mut counter_ref = counter.lock().unwrap();
+                    *counter_ref = *counter_ref - 1;
+                    info!("after removing connection {:?}", *counter_ref);
+                    break;
+                }
+            }
         warn!("web_socket serializing {:?}", time_serializing.elapsed());
     }
 }
