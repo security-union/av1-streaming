@@ -3,6 +3,9 @@
 
 # 🔥🔥 Fearless AV1 live streaming for Linux and Raspberry PI using the rav1e encoder and Chrome's WebCodecs library 🔥🔥
 
+## Goal
+Use the latest and greatest open source technology to live stream from a Raspberry PI to the Chrome browser.
+
 ## TLDR
 
 1. Start Docker `docker-compose up`
@@ -22,10 +25,6 @@ Depending on your webcam, you might need to customize the framerate in the docke
 ```
 
 If you notice that the FPS is too low, just set FRAMERATE to 10
-
-
-## Goals
-Use the latest, greatest open source technology to live stream using a Raspberry PI.
 
 ## AV1 Streaming
 AOMedia Video 1 (AV1) is an open, royalty-free video coding format initially designed for video transmissions over the Internet. It was developed as a successor to VP9 by the Alliance for Open Media (AOMedia),
