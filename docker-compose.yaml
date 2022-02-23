@@ -6,7 +6,7 @@ services:
       context: .
     command: cargo watch -x 'run  --release --bin video-streaming'
     environment:
-      - RUST_LOG=warn
+      - RUST_LOG=info
     volumes:
       - /app/target
       - /dev/video0:/dev/video0

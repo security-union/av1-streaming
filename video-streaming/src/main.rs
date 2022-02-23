@@ -14,7 +14,6 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use warp::Error;
 use warp::{
     ws::{Message, WebSocket},
     Filter,
@@ -58,8 +57,8 @@ async fn main() {
     let counter: Arc<Mutex<u16>> = Arc::new(Mutex::new(0));
     let bus_copy = bus.clone();
     let add_bus = warp::any().map(move || bus.clone());
-    let add_counter_copy = counter.clone();
-    let add_counter = warp::any().map(move || add_counter_copy.clone());
+    let web_socket_counter = counter.clone();
+    let add_counter = warp::any().map(move || web_socket_counter.clone());
 
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
 
@@ -68,107 +67,119 @@ async fn main() {
     let fps_thread = thread::spawn(move || {
         let mut num_frames = 0;
         let mut now_plus_1 = since_the_epoch().as_millis() + 1000;
-        println!("Starting fps loop");
-        loop {
-            match fps_rx.recv() {
-                Ok(dur) => {
-                    if now_plus_1 < dur {
-                        println!("FPS: {:?}", num_frames);
-                        num_frames = 0;
-                        now_plus_1 = since_the_epoch().as_millis() + 1000;
-                    } else {
-                        num_frames += 1;
-                    }
-                }
-                Err(e) => {
-                    println!("Receive error: {:?}", e);
-                }
-            }
-        }
+        // warn!("Starting fps loop");
+        // loop {
+        //     match fps_rx.recv() {
+        //         Ok(dur) => {
+        //             if now_plus_1 < dur {
+        //                 // warn!("FPS: {:?}", num_frames);
+        //                 num_frames = 0;
+        //                 now_plus_1 = since_the_epoch().as_millis() + 1000;
+        //             } else {
+        //                 num_frames += 1;
+        //             }
+        //         }
+        //         Err(e) => {
+        //             error!("Receive error: {:?}", e);
+        //         }
+        //     }
+        // }
     });
 
     let encoding_thread = thread::spawn(move || {
-        let mut ctx: Context<u8> = cfg.new_context().unwrap();
-        let mut camera = Camera::new(
-            0, // index
-            Some(CameraFormat::new_from(
-                width as u32,
-                height as u32,
-                FrameFormat::MJPEG,
-                10,
-            )), // format
-        )
-        .unwrap();
-        camera.open_stream().unwrap();
         loop {
-            let counter = counter.lock().unwrap();
-            if *counter <= 0 {
-                break;
-            }
-            let mut frame = camera.frame().unwrap();
-            let mut r_slice: Vec<u8> = vec![];
-            let mut g_slice: Vec<u8> = vec![];
-            let mut b_slice: Vec<u8> = vec![];
-            for pixel in frame.pixels_mut() {
-                let (r, g, b) = to_ycbcr(pixel);
-                r_slice.push(r);
-                g_slice.push(g);
-                b_slice.push(b);
-            }
-            let planes = vec![r_slice, g_slice, b_slice];
-            info!("read thread: Creating new frame");
-            let mut frame = ctx.new_frame();
-            let encoding_time = Instant::now();
-            for (dst, src) in frame.planes.iter_mut().zip(planes) {
-                dst.copy_from_raw_u8(&src, enc.width, 1);
-            }
+            // {   
+            //     info!("encoding thread: blocking before locking");
+            //     let counter = counter.lock().unwrap();
+            //     if *counter <= 0 {
+            //         thread::sleep(Duration::from_secs(1));
+            //         continue;
+            //     }
+            // }
+            let mut ctx: Context<u8> = cfg.new_context().unwrap();
+            let mut camera = Camera::new(
+                0, // index
+                Some(CameraFormat::new_from(
+                    width as u32,
+                    height as u32,
+                    FrameFormat::MJPEG,
+                    30,
+                )), // format
+            )
+            .unwrap();
+            camera.open_stream().unwrap();
+            loop {
+                info!("blocking after starting camera");
+                let counter = counter.lock().unwrap();
+                if *counter <= 0 {
+                    // warn!("stopping the recording");
+                    // break;
+                }   
+                let mut frame = camera.frame().unwrap();
+                let mut r_slice: Vec<u8> = vec![];
+                let mut g_slice: Vec<u8> = vec![];
+                let mut b_slice: Vec<u8> = vec![];
+                for pixel in frame.pixels_mut() {
+                    let (r, g, b) = to_ycbcr(pixel);
+                    r_slice.push(r);
+                    g_slice.push(g);
+                    b_slice.push(b);
+                }
+                let planes = vec![r_slice, g_slice, b_slice];
+                // info!("read thread: Creating new frame");
+                let mut frame = ctx.new_frame();
+                let encoding_time = Instant::now();
+                for (dst, src) in frame.planes.iter_mut().zip(planes) {
+                    dst.copy_from_raw_u8(&src, enc.width, 1);
+                }
 
-            match ctx.send_frame(frame) {
-                Ok(_) => {
-                    info!("read thread: queued frame");
+                match ctx.send_frame(frame) {
+                    Ok(_) => {
+                        // info!("read thread: queued frame");
+                    }
+                    Err(e) => match e {
+                        EncoderStatus::EnoughData => {
+                            // info!("read thread: Unable to append frame to the internal queue");
+                        }
+                        _ => {
+                            panic!("read thread: Unable to send frame");
+                        }
+                    },
                 }
-                Err(e) => match e {
-                    EncoderStatus::EnoughData => {
-                        info!("read thread: Unable to append frame to the internal queue");
+                // info!("read thread: receiving encoded frame");
+                match ctx.receive_packet() {
+                    Ok(pkt) => {
+                        // warn!("time encoding {:?}", encoding_time.elapsed());
+                        // info!("read thread: base64 Encoding packet {}", pkt.input_frameno);
+                        let frame_type = if pkt.frame_type == FrameType::KEY {
+                            "key"
+                        } else {
+                            "delta"
+                        };
+                        let time_serializing = Instant::now();
+                        let data = encode(pkt.data);
+                        // info!("read thread: base64 Encoded packet {}", pkt.input_frameno);
+                        let frame = VideoPacket {
+                            data: Some(data),
+                            frameType: frame_type.to_string(),
+                            epochTime: since_the_epoch(),
+                        };
+                        let json = serde_json::to_string(&frame).unwrap();
+                        bus_copy.lock().unwrap().broadcast(json);
+                        // warn!("time serializing {:?}", time_serializing.elapsed());
+                        fps_tx.send(since_the_epoch().as_millis()).unwrap();
                     }
-                    _ => {
-                        panic!("read thread: Unable to send frame");
-                    }
-                },
-            }
-            info!("read thread: receiving encoded frame");
-            match ctx.receive_packet() {
-                Ok(pkt) => {
-                    warn!("time encoding {:?}", encoding_time.elapsed());
-                    info!("read thread: base64 Encoding packet {}", pkt.input_frameno);
-                    let frame_type = if pkt.frame_type == FrameType::KEY {
-                        "key"
-                    } else {
-                        "delta"
-                    };
-                    let time_serializing = Instant::now();
-                    let data = encode(pkt.data);
-                    info!("read thread: base64 Encoded packet {}", pkt.input_frameno);
-                    let frame = VideoPacket {
-                        data: Some(data),
-                        frameType: frame_type.to_string(),
-                        epochTime: since_the_epoch(),
-                    };
-                    let json = serde_json::to_string(&frame).unwrap();
-                    bus_copy.lock().unwrap().broadcast(json);
-                    warn!("time serializing {:?}", time_serializing.elapsed());
-                    fps_tx.send(since_the_epoch().as_millis()).unwrap();
+                    Err(e) => match e {
+                        EncoderStatus::LimitReached => {
+                            info!("read thread: Limit reached");
+                        }
+                        EncoderStatus::Encoded => info!("read thread: Encoded"),
+                        EncoderStatus::NeedMoreData => info!("read thread: Need more data"),
+                        _ => {
+                            panic!("read thread: Unable to receive packet");
+                        }
+                    },
                 }
-                Err(e) => match e {
-                    EncoderStatus::LimitReached => {
-                        info!("read thread: Limit reached");
-                    }
-                    EncoderStatus::Encoded => info!("read thread: Encoded"),
-                    EncoderStatus::NeedMoreData => info!("read thread: Need more data"),
-                    _ => {
-                        panic!("read thread: Unable to receive packet");
-                    }
-                },
             }
         }
     });
@@ -180,9 +191,11 @@ async fn main() {
         .and(add_counter)
         .map(
             |ws: warp::ws::Ws, bus: Arc<Mutex<Bus<String>>>, counter: Arc<Mutex<u16>>| {
+                info!("before creating upgrade");
                 // And then our closure will be called when it completes...
                 let reader = bus.lock().unwrap().add_rx();
                 let counter_copy = counter.clone();
+                info!("calling client connection");
                 ws.on_upgrade(|ws| client_connection(ws, reader, counter_copy))
             },
         );
@@ -213,8 +226,11 @@ pub async fn client_connection(
     println!("establishing client connection... {:?}", ws);
     let (mut client_ws_sender, _client_ws_rcv) = ws.split();
     {
+        info!("blocking before adding connection {:?}", counter);
         let mut counter_ref = counter.lock().unwrap();
         *counter_ref = *counter_ref + 1;
+        info!("after adding connection {:?}", *counter_ref);
+        drop(counter_ref);
     }
     loop {
         let next = reader.recv().unwrap();
@@ -225,8 +241,12 @@ pub async fn client_connection(
             .await
             .err()
             .map(|e| {
+                info!("blocking before removing connection {:?}", counter);
                 let mut counter_ref = counter.lock().unwrap();
                 *counter_ref = *counter_ref - 1;
+                info!("after removing connection {:?}", *counter_ref);
+                drop(counter_ref);
+                panic!("panic");
             });
         warn!("web_socket serializing {:?}", time_serializing.elapsed());
     }
