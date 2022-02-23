@@ -1,9 +1,9 @@
 #!/bin/bash -e
 
-sudo apt-get install -qq gcc-arm-linux-gnueabihf
-rustup target add armv7-unknown-linux-gnueabihf
+sudo apt-get install -qq gcc-aarch64-linux-gnu
+rustup target add aarch64-unknown-linux-gnu
 mkdir -p ~/.cargo
 cat >>~/.cargo/config <<EOF
-[target.armv7-unknown-linux-gnueabihf]
-linker = "arm-linux-gnueabihf-gcc"
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
 EOF

@@ -4,7 +4,14 @@ import Webcam from 'react-webcam';
 import {toByteArray, fromByteArray} from 'base64-js';
 
 const BROWSER_TEST = false;
-const webSocketURL = (BROWSER_TEST) ? 'ws://localhost:8080' : 'ws://localhost:8080/ws';
+const LOCALHOST_TEST = false;
+let webSocketURL = 'ws://localhost:8080';
+if (LOCALHOST_TEST) {
+  webSocketURL = webSocketURL + "/ws";
+}
+if (!LOCALHOST_TEST && !BROWSER_TEST) {
+  webSocketURL = 'ws://192.168.7.233:8080/ws';
+}
 let codec_string = "av01.0.01M.08"; 
 // av01: AV1
 // 0 profile: main profile
@@ -15,23 +22,21 @@ let codec_string = "av01.0.01M.08";
 export const WebSocketDemo = () => {
   //Public API that will echo messages sent to it back to the client
   const [socketUrl, setSocketUrl] = useState(webSocketURL);
-  const [messageHistory, setMessageHistory]: [any[], Dispatch<SetStateAction<any[]>>] = useState([{ data: "sdfsdf"}]);
   const canvasRef = React.useRef(null)
   const webcamRef = React.useRef(null);
   const [videoDecoder, setVideoDecoder] = useState(null);
 
   const {
     sendMessage,
-    lastMessage,
+    lastJsonMessage,
     readyState,
   } = useWebSocket(socketUrl);
 
   useEffect(() => {
     try {
+      const payload = lastJsonMessage;
+      const data = toByteArray(payload.data);
       if (BROWSER_TEST) {
-        const payload = JSON.parse(lastMessage?.data); 
-        const data = toByteArray(payload.data);
-      
         const chunk = new EncodedVideoChunk({
           timestamp: payload.timestamp,
           type: payload.frameType,
@@ -43,10 +48,12 @@ export const WebSocketDemo = () => {
         }
         // @ts-ignore
         videoDecoder.decode(chunk);
-      } else {
-        lastMessage?.data.text().then((text: string) => {
-          const payload = JSON.parse(text);
-          const data = toByteArray(payload.data);
+      } else {  
+          console.log("lag ", Date.now() / 1000 - (payload.epochTime.secs + Math.pow(payload.epochTime.nanos, -9)));
+          if (!payload.data) {
+            console.error("no data");
+            return
+          }
           const chunk = new EncodedVideoChunk({
             timestamp: 0,
             type: payload.frameType,
@@ -58,7 +65,6 @@ export const WebSocketDemo = () => {
           }
           // @ts-ignore
           videoDecoder.decode(chunk);
-        }) 
       }
       
     }catch (e: any) {
@@ -83,27 +89,15 @@ export const WebSocketDemo = () => {
         });
         newEncoder.configure({
           codec: codec_string,
-          codedWidth: 640,
-          codedHeight: 480,
-          // @ts-ignore
-          colorSpace: new VideoColorSpace({
-            fullRange: true,
-            matrix: "bt709",
-            primaries: "bt709",
-            transfer: "bt709"
-          })
         });
         console.log("configured video decoder");
         return newEncoder;
       });
     }
-  }, [lastMessage, setMessageHistory]);
+  }, [lastJsonMessage, videoDecoder]);
 
   const handleClickChangeSocketUrl = useCallback(() =>
     setSocketUrl(webSocketURL), []);
-
-  const handleClickSendMessage = useCallback(() =>
-    sendMessage('Hello'), []);
 
   const connectionStatus = {
     [ReadyState.CONNECTING]: 'Connecting',
