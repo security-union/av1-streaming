@@ -1,4 +1,4 @@
-### Fearless AV1 live streaming for Raspberry PI and Chrome's WebCodecs
+# Fearless AV1 live streaming for Raspberry PI and Chrome's WebCodecs
 
 ## Goals
 Use the latest, greatest open source technology to live stream using a Raspberry PI.
@@ -22,12 +22,12 @@ Specifically:
 
 ## Tech Stack
 
-# Raspberry PI App (video-streaming)
+### Raspberry PI App (video-streaming)
 1. Camera recorder: nokhwa https://crates.io/crates/nokhwa
 2. AV1 encoder: rav1e https://crates.io/crates/rav1e
 3. WebSocket server: warp https://crates.io/crates/warp
 
-# UI (web-ui)
+### UI (web-ui)
 1. UI Framework: React https://reactjs.org/
 2. Web AV1 decoder: WebCodecs https://web.dev/webcodecs/
 3. WebSockets: react-use-websocket https://www.npmjs.com/package/react-use-websocket
