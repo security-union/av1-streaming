@@ -90,9 +90,9 @@ async fn main() {
         loop {
             {
                 info!("waiting for browser...");
+                thread::sleep(Duration::from_millis(200));
                 let counter = counter.lock().unwrap();
                 if *counter <= 0 {
-                    thread::sleep(Duration::from_millis(200));
                     continue;
                 }
             }

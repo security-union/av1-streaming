@@ -1,6 +1,5 @@
 [workspace]
 
 members = [
-    "video-streaming",
-    "websocket-server"
+    "video-streaming"
 ]

@@ -90,16 +90,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "async-nats"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3dae854440faecce70f0664f41f09a588de1e7a4366931ec3962ded3d8f903c5"
-dependencies = [
- "blocking",
- "nats 0.10.1",
-]
-
-[[package]]
 name = "async-task"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1296,32 +1286,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ce095842aee9aa3ecbda7a5d2a4df680375fd128a8596b6b56f8e497e231f483"
 dependencies = [
  "rayon",
-]
-
-[[package]]
-name = "nats"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c0cfa3903c3e613edddaa4a2f86b2053a1d6fbcf315a3ff352c25ba9f0a8585"
-dependencies = [
- "base64",
- "base64-url",
- "crossbeam-channel 0.5.2",
- "fastrand",
- "itoa 0.4.8",
- "json",
- "libc",
- "log",
- "memchr",
- "nkeys",
- "nuid",
- "once_cell",
- "parking_lot 0.11.2",
- "regex",
- "rustls",
- "rustls-native-certs",
- "webpki",
- "winapi",
 ]
 
 [[package]]
@@ -2711,7 +2675,7 @@ dependencies = [
  "futures-util",
  "image",
  "log",
- "nats 0.18.0",
+ "nats",
  "nokhwa",
  "rav1e",
  "serde",
@@ -2850,18 +2814,6 @@ checksum = "b8e38c0608262c46d4a56202ebabdeb094cef7e560ca7a226c6bf055188aa4ea"
 dependencies = [
  "ring",
  "untrusted",
-]
-
-[[package]]
-name = "websocket-server"
-version = "0.1.0"
-dependencies = [
- "async-nats",
- "env_logger 0.9.0",
- "futures-util",
- "log",
- "tokio",
- "warp",
 ]
 
 [[package]]
