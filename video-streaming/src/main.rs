@@ -166,7 +166,7 @@ async fn main() {
                         };
                         let time_serializing = Instant::now();
                         let data = encode(pkt.data);
-                        // info!("read thread: base64 Encoded packet {}", pkt.input_frameno);
+                        info!("read thread: base64 Encoded packet {}", pkt.input_frameno);
                         let frame = VideoPacket {
                             data: Some(data),
                             frameType: frame_type.to_string(),
@@ -174,7 +174,7 @@ async fn main() {
                         };
                         let json = serde_json::to_string(&frame).unwrap();
                         bus_copy.lock().unwrap().broadcast(json);
-                        // warn!("time serializing {:?}", time_serializing.elapsed());
+                        info!("time serializing {:?}", time_serializing.elapsed());
                         fps_tx_copy.send(since_the_epoch().as_millis()).unwrap();
                     }
                     Err(e) => match e {
@@ -202,9 +202,8 @@ async fn main() {
                 info!("before creating upgrade");
                 // And then our closure will be called when it completes...
                 let reader = bus.lock().unwrap().add_rx();
-                let counter_copy = counter.clone();
                 info!("calling client connection");
-                ws.on_upgrade(|ws| client_connection(ws, reader, counter_copy))
+                ws.on_upgrade(|ws| client_connection(ws, reader, counter))
             },
         );
     warp::serve(routes).run(([0, 0, 0, 0], 8080)).await;
@@ -247,11 +246,11 @@ pub async fn client_connection(
         match client_ws_sender.send(Message::text(next)).await {
             Ok(_) => {}
             Err(e) => {
-                warn!("blocking before removing connection");
-                let mut counter_ref = counter.lock().unwrap();
-                *counter_ref = *counter_ref - 1;
-                warn!("after removing connection {:?}", *counter_ref);
-                drop(counter_ref);
+                // warn!("blocking before removing connection");
+                // // let mut counter_ref = counter.lock().unwrap();
+                // // *counter_ref = *counter_ref - 1;
+                // // warn!("after removing connection {:?}", *counter_ref);
+                // // drop(counter_ref);
                 break;
             }
         }
