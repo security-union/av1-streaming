@@ -20,3 +20,5 @@ services:
       - 3000:3000
     volumes:
       - ./web-ui/src:/app/src
+    environment:
+      - REACT_APP_USE_LOCALHOST:true

@@ -1,36 +1,34 @@
-import React, { useState, useCallback, useEffect, Dispatch, SetStateAction } from 'react';
-import useWebSocket, { ReadyState } from 'react-use-websocket';
-import Webcam from 'react-webcam';
-import {toByteArray, fromByteArray} from 'base64-js';
+import React, { useState, useCallback, useEffect } from "react";
+import useWebSocket, { ReadyState } from "react-use-websocket";
+import Webcam from "react-webcam";
+import { toByteArray, fromByteArray } from "base64-js";
+import { env } from "process";
 
 const BROWSER_TEST = false;
-const LOCALHOST_TEST = false;
-let webSocketURL = 'ws://localhost:8080';
+const LOCALHOST_TEST = env.REACT_APP_USE_LOCALHOST || false;
+const RASPBERRY_PI_IP = env.REACT_APP_RASPBERRY_PI_IP || "192.168.7.233";
+let webSocketURL = "ws://localhost:8080";
 if (LOCALHOST_TEST) {
   webSocketURL = webSocketURL + "/ws";
 }
 if (!LOCALHOST_TEST && !BROWSER_TEST) {
-  webSocketURL = 'ws://192.168.7.233:8080/ws';
+  webSocketURL = `ws://${RASPBERRY_PI_IP}:8080/ws`;
 }
-let codec_string = "av01.0.01M.08"; 
+let codec_string = "av01.0.01M.08";
 // av01: AV1
 // 0 profile: main profile
-// 01 level: level2.1 
+// 01 level: level2.1
 // M tier: Main tier
 // 08 bit depth = 8 bits
 
 export const WebSocketDemo = () => {
   //Public API that will echo messages sent to it back to the client
   const [socketUrl, setSocketUrl] = useState(webSocketURL);
-  const canvasRef = React.useRef(null)
+  const canvasRef = React.useRef(null);
   const webcamRef = React.useRef(null);
   const [videoDecoder, setVideoDecoder] = useState(null);
 
-  const {
-    sendMessage,
-    lastJsonMessage,
-    readyState,
-  } = useWebSocket(socketUrl);
+  const { sendMessage, lastJsonMessage, readyState } = useWebSocket(socketUrl);
 
   useEffect(() => {
     try {
@@ -48,33 +46,36 @@ export const WebSocketDemo = () => {
         }
         // @ts-ignore
         videoDecoder.decode(chunk);
-      } else {  
-          console.log("lag ", Date.now() / 1000 - (payload.epochTime.secs + Math.pow(payload.epochTime.nanos, -9)));
-          if (!payload.data) {
-            console.error("no data");
-            return
-          }
-          const chunk = new EncodedVideoChunk({
-            timestamp: 0,
-            type: payload.frameType,
-            duration: 0,
-            data,
-          });
-          if (payload.type === "key") {
-            console.log("got key message");
-          }
-          // @ts-ignore
-          videoDecoder.decode(chunk);
+      } else {
+        console.log(
+          "lag ",
+          Date.now() / 1000 -
+            (payload.epochTime.secs + Math.pow(payload.epochTime.nanos, -9))
+        );
+        if (!payload.data) {
+          console.error("no data");
+          return;
+        }
+        const chunk = new EncodedVideoChunk({
+          timestamp: 0,
+          type: payload.frameType,
+          duration: 0,
+          data,
+        });
+        if (payload.type === "key") {
+          console.log("got key message");
+        }
+        // @ts-ignore
+        videoDecoder.decode(chunk);
       }
-      
-    }catch (e: any) {
+    } catch (e: any) {
       console.error("error ", e);
     }
-    
+
     if (videoDecoder === null) {
       // @ts-ignore
-      setVideoDecoder(prev => {
-        const newEncoder =  new VideoDecoder({
+      setVideoDecoder((prev) => {
+        const newEncoder = new VideoDecoder({
           output: (frame) => {
             console.log("decoded frame");
             const canvas = canvasRef.current;
@@ -85,7 +86,7 @@ export const WebSocketDemo = () => {
           },
           error: (error) => {
             console.error("error", error);
-          }
+          },
         });
         newEncoder.configure({
           codec: codec_string,
@@ -96,22 +97,26 @@ export const WebSocketDemo = () => {
     }
   }, [lastJsonMessage, videoDecoder]);
 
-  const handleClickChangeSocketUrl = useCallback(() =>
-    setSocketUrl(webSocketURL), []);
+  const handleClickChangeSocketUrl = useCallback(
+    () => setSocketUrl(webSocketURL),
+    []
+  );
 
   const connectionStatus = {
-    [ReadyState.CONNECTING]: 'Connecting',
-    [ReadyState.OPEN]: 'Open',
-    [ReadyState.CLOSING]: 'Closing',
-    [ReadyState.CLOSED]: 'Closed',
-    [ReadyState.UNINSTANTIATED]: 'Uninstantiated',
+    [ReadyState.CONNECTING]: "Connecting",
+    [ReadyState.OPEN]: "Open",
+    [ReadyState.CLOSING]: "Closing",
+    [ReadyState.CLOSED]: "Closed",
+    [ReadyState.UNINSTANTIATED]: "Uninstantiated",
   }[readyState];
 
   const [capturing, setCapturing] = React.useState(false);
 
   const handleStartCaptureClick = React.useCallback(() => {
     setCapturing(true);
-    async function captureAndEncode(processChunk: (arg0: EncodedVideoChunk) => void) {
+    async function captureAndEncode(
+      processChunk: (arg0: EncodedVideoChunk) => void
+    ) {
       if (webcamRef.current !== null) {
         // @ts-ignore
         const stream = webcamRef.current.stream as MediaStream;
@@ -122,8 +127,8 @@ export const WebSocketDemo = () => {
         // @ts-ignore
         var prc = new MediaStreamTrackProcessor(track);
         var frameStream = prc.readable;
-        const frameReader= frameStream.getReader();
-      
+        const frameReader = frameStream.getReader();
+
         const init = {
           // @ts-ignore
           output: (chunk) => {
@@ -132,38 +137,37 @@ export const WebSocketDemo = () => {
           },
           error: (e: Error) => {
             console.error(e.message);
-          }
+          },
         };
-      
+
         const config = {
           codec: codec_string,
           width: settings.width!,
-          height: settings.height!
+          height: settings.height!,
         };
-      
+
         let encoder = new VideoEncoder(init);
         encoder.configure(config);
         // @ts-ignore
-        frameReader.read().then(function processFrame({done, value}) { 
-          if(done||capturing) {
+        frameReader.read().then(function processFrame({ done, value }) {
+          if (done || capturing) {
             value.close();
             encoder.close();
             return;
           }
-    
-        if (!capturing && pending_outputs <= 30) {
-          if (++frame_counter % 20 == 0) {
-            console.log(frame_counter);
+
+          if (!capturing && pending_outputs <= 30) {
+            if (++frame_counter % 20 == 0) {
+              console.log(frame_counter);
+            }
+
+            pending_outputs++;
+            const insert_keyframe = frame_counter % 50 == 0;
+            encoder.encode(value, { keyFrame: insert_keyframe });
           }
-    
-          pending_outputs++;
-          const insert_keyframe = (frame_counter % 50) == 0;
-          encoder.encode(value, { keyFrame: insert_keyframe });
-        }
-        value.close();
-        frameReader.read().then(processFrame);
-      });
-        
+          value.close();
+          frameReader.read().then(processFrame);
+        });
       } else {
         console.error("error!!!");
       }
@@ -177,11 +181,10 @@ export const WebSocketDemo = () => {
         data: encoded,
         frameType: chunk.type,
         timestamp: chunk.timestamp,
-        duration: chunk.duration
-      }
+        duration: chunk.duration,
+      };
       sendMessage(JSON.stringify(payload), false);
     });
-    
   }, [webcamRef, setCapturing]);
 
   const handleStopCaptureClick = React.useCallback(() => {
@@ -196,13 +199,11 @@ export const WebSocketDemo = () => {
       ) : (
         <button onClick={handleStartCaptureClick}>Start Capture</button>
       )}
-      <button
-        onClick={handleClickChangeSocketUrl}
-      >
+      <button onClick={handleClickChangeSocketUrl}>
         Click Me to change Socket Url
       </button>
       <span>The WebSocket is currently {connectionStatus}</span>
-      <canvas ref={canvasRef} width={640} height={480}/>
+      <canvas ref={canvasRef} width={640} height={480} />
     </div>
   );
 };

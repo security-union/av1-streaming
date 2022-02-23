@@ -1,9 +1,9 @@
-import { WebSocketDemo } from './webSocketDemo';
+import { WebSocketDemo } from "./webSocketDemo";
 
 function App() {
   return (
     <div className="App">
-      <WebSocketDemo/>
+      <WebSocketDemo />
     </div>
   );
 }
