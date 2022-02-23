@@ -3,6 +3,27 @@
 
 # 🔥🔥 Fearless AV1 live streaming for Linux and Raspberry PI using the rav1e encoder and Chrome's WebCodecs library 🔥🔥
 
+## TLDR
+
+1. Start Docker `docker-compose up`
+
+2. Download Chrome Canary from https://www.chromium.org/getting-involved/dev-channel/ for your OS, (App tested with Linux)
+
+3. Go to `localhost:3000`
+
+### Customization
+
+Depending on your webcam, you might need to customize the framerate in the docker-compose.yaml file:
+
+```
+    environment:
+      - RUST_LOG=info
+      - FRAMERATE=30
+```
+
+If you notice that the FPS is too low, just set FRAMERATE to 10
+
+
 ## Goals
 Use the latest, greatest open source technology to live stream using a Raspberry PI.
 
