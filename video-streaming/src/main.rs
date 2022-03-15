@@ -29,16 +29,17 @@ struct VideoPacket {
     epochTime: Duration,
 }
 
-// Change this device to match your camera!! by default, linux will mount the device to video0, which corresponds
-// to VIDEO_DEVICE_INDEX = 0
-static VIDEO_DEVICE_INDEX: usize = 0;
-
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
     let mut enc = EncoderConfig::default();
     let width = 640;
     let height = 480;
+    let video_device_index: usize = env::var("VIDEO_DEVICE_INDEX")
+        .ok()
+        .map(|n| n.parse::<usize>().ok())
+        .flatten()
+        .unwrap_or(0);
     let framerate: u32 = env::var("FRAMERATE")
         .ok()
         .map(|n| n.parse::<u32>().ok())
@@ -111,7 +112,7 @@ async fn main() -> Result<()> {
             let fps_tx_copy = fps_tx.clone();
             let mut ctx: Context<u8> = cfg.new_context().unwrap();
             let mut camera = Camera::new(
-                VIDEO_DEVICE_INDEX, // index
+                video_device_index, // index
                 Some(CameraFormat::new_from(
                     width as u32,
                     height as u32,
