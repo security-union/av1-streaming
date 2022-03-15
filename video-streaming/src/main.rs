@@ -1,24 +1,27 @@
 #[macro_use]
 extern crate log;
 
+use anyhow::Result;
 use base64::encode;
 use bus::{Bus, BusReader};
 use futures_util::{SinkExt, StreamExt};
 use image::Rgb;
-use nokhwa::{Camera, CameraFormat, FrameFormat};
+use nokhwa::{Camera, CameraFormat, CaptureAPIBackend, FrameFormat};
+use rav1e::prelude::ChromaSampling;
 use rav1e::*;
 use rav1e::{config::SpeedSettings, prelude::FrameType};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
-use std::{thread, env};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::{env, thread};
 use warp::{
     ws::{Message, WebSocket},
     Filter,
 };
 
+#[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
 struct VideoPacket {
     data: Option<String>,
@@ -26,17 +29,21 @@ struct VideoPacket {
     epochTime: Duration,
 }
 
+// Change this device to match your camera!! by default, linux will mount the device to video0, which corresponds
+// to VIDEO_DEVICE_INDEX = 0
+static VIDEO_DEVICE_INDEX: usize = 0;
+
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     env_logger::init();
     let mut enc = EncoderConfig::default();
     let width = 640;
     let height = 480;
     let framerate: u32 = env::var("FRAMERATE")
-    .ok()
-    .map(|n| n.parse::<u32>().ok())
-    .flatten()
-    .unwrap_or(10u32);
+        .ok()
+        .map(|n| n.parse::<u32>().ok())
+        .flatten()
+        .unwrap_or(10u32);
     warn!("Framerate {framerate}");
 
     enc.width = width;
@@ -53,6 +60,7 @@ async fn main() {
     enc.quantizer = 120;
     enc.still_picture = false;
     enc.tiles = 8;
+    enc.chroma_sampling = ChromaSampling::Cs444;
 
     let bus: Arc<Mutex<Bus<String>>> = Arc::new(Mutex::new(bus::Bus::new(10)));
     let counter: Arc<Mutex<u16>> = Arc::new(Mutex::new(0));
@@ -64,6 +72,9 @@ async fn main() {
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
 
     let (fps_tx, fps_rx): (Sender<u128>, Receiver<u128>) = mpsc::channel();
+
+    let devices = nokhwa::query_devices(CaptureAPIBackend::Video4Linux)?;
+    info!("available cameras: {:?}", devices);
 
     let fps_thread = thread::spawn(move || {
         let mut num_frames = 0;
@@ -100,7 +111,7 @@ async fn main() {
             let fps_tx_copy = fps_tx.clone();
             let mut ctx: Context<u8> = cfg.new_context().unwrap();
             let mut camera = Camera::new(
-                0, // index
+                VIDEO_DEVICE_INDEX, // index
                 Some(CameraFormat::new_from(
                     width as u32,
                     height as u32,
@@ -111,13 +122,15 @@ async fn main() {
             .unwrap();
             camera.open_stream().unwrap();
             loop {
-                info!("blocking after starting camera");
-                let counter = counter.lock().unwrap();
-                if *counter <= 0 {
-                    warn!("stopping the recording");
-                    break;
+                {
+                    debug!("blocking after starting camera");
+                    let counter = counter.lock().unwrap();
+                    if *counter <= 0 {
+                        warn!("stopping the recording");
+                        break;
+                    }
                 }
-                info!("grabbing frame");
+                debug!("grabbing frame");
                 let mut frame = camera.frame().unwrap();
                 let mut r_slice: Vec<u8> = vec![];
                 let mut g_slice: Vec<u8> = vec![];
@@ -129,7 +142,7 @@ async fn main() {
                     b_slice.push(b);
                 }
                 let planes = vec![r_slice, g_slice, b_slice];
-                debug!("read thread: Creating new frame");
+                debug!("Creating new frame");
                 let mut frame = ctx.new_frame();
                 let encoding_time = Instant::now();
                 for (dst, src) in frame.planes.iter_mut().zip(planes) {
@@ -138,18 +151,18 @@ async fn main() {
 
                 match ctx.send_frame(frame) {
                     Ok(_) => {
-                        debug!("read thread: queued frame");
+                        debug!("queued frame");
                     }
                     Err(e) => match e {
                         EncoderStatus::EnoughData => {
-                            debug!("read thread: Unable to append frame to the internal queue");
+                            debug!("Unable to append frame to the internal queue");
                         }
                         _ => {
-                            panic!("read thread: Unable to send frame");
+                            panic!("Unable to send frame");
                         }
                     },
                 }
-                debug!("read thread: receiving encoded frame");
+                debug!("receiving encoded frame");
                 match ctx.receive_packet() {
                     Ok(pkt) => {
                         debug!("time encoding {:?}", encoding_time.elapsed());
@@ -174,12 +187,12 @@ async fn main() {
                     }
                     Err(e) => match e {
                         EncoderStatus::LimitReached => {
-                            info!("read thread: Limit reached");
+                            warn!("read thread: Limit reached");
                         }
-                        EncoderStatus::Encoded => info!("read thread: Encoded"),
-                        EncoderStatus::NeedMoreData => info!("read thread: Need more data"),
+                        EncoderStatus::Encoded => debug!("read thread: Encoded"),
+                        EncoderStatus::NeedMoreData => debug!("read thread: Need more data"),
                         _ => {
-                            panic!("read thread: Unable to receive packet");
+                            warn!("read thread: Unable to receive packet");
                         }
                     },
                 }
@@ -194,17 +207,18 @@ async fn main() {
         .and(add_counter)
         .map(
             |ws: warp::ws::Ws, bus: Arc<Mutex<Bus<String>>>, counter: Arc<Mutex<u16>>| {
-                info!("before creating upgrade");
+                debug!("before creating upgrade");
                 // And then our closure will be called when it completes...
                 let reader = bus.lock().unwrap().add_rx();
                 let counter_copy = counter.clone();
-                info!("calling client connection");
+                debug!("adding client connection");
                 ws.on_upgrade(|ws| client_connection(ws, reader, counter_copy))
             },
         );
     warp::serve(routes).run(([0, 0, 0, 0], 8080)).await;
     encoding_thread.join().unwrap();
     fps_thread.join().unwrap();
+    Ok(())
 }
 
 fn clamp(val: f32) -> u8 {
@@ -226,18 +240,18 @@ pub async fn client_connection(
     mut reader: BusReader<String>,
     counter: Arc<Mutex<u16>>,
 ) {
-    println!("establishing client connection... {:?}", ws);
+    info!("establishing client connection... {:?}", ws);
     let (mut client_ws_sender, _client_ws_rcv) = ws.split();
     {
         info!("blocking before adding connection {:?}", counter);
         let mut counter_ref = counter.lock().unwrap();
         *counter_ref = *counter_ref + 1;
-        info!("after adding connection {:?}", *counter_ref);
+        info!("adding connection, connection counter: {:?}", *counter_ref);
         drop(counter_ref);
     }
     loop {
         let next = reader.recv().unwrap();
-        info!("Forwarding video message");
+        debug!("Forwarding video message");
         let time_serializing = Instant::now();
         match client_ws_sender.send(Message::text(next)).await {
             Ok(_) => {}
@@ -245,7 +259,10 @@ pub async fn client_connection(
                 info!("blocking before removing connection {:?}", counter);
                 let mut counter_ref = counter.lock().unwrap();
                 *counter_ref = *counter_ref - 1;
-                info!("after removing connection {:?}", *counter_ref);
+                info!(
+                    "Removing connection, connection counter: {:?}",
+                    *counter_ref
+                );
                 break;
             }
         }

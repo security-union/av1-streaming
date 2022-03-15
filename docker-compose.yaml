@@ -11,6 +11,12 @@ services:
     volumes:
       - /app/target
       - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/video2:/dev/video2
+      - /dev/video3:/dev/video3
+      - /dev/video4:/dev/video4
+      - /dev/video5:/dev/video5
+      - /dev/video6:/dev/video6
       - ./video-streaming:/app/video-streaming
     ports:
       - 8080:8080
