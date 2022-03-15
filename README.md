@@ -25,6 +25,7 @@ Depending on your webcam, you might need to customize the framerate in the docke
     environment:
       - RUST_LOG=info
       - FRAMERATE=30
+      - VIDEO_DEVICE_INDEX=0
 ```
 
 If you notice that the FPS is too low, just set FRAMERATE to 10
