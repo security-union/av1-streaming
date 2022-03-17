@@ -106,7 +106,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    let camera_thread = thread::spawn(move || {
+    let camera_read_thread = thread::spawn(move || {
         loop {
             {
                 info!("waiting for browser...");
@@ -233,7 +233,7 @@ async fn main() -> Result<()> {
     warp::serve(routes).run(([0, 0, 0, 0], 8080)).await;
     encoding_thread.join().unwrap();
     fps_thread.join().unwrap();
-    camera_thread.join().unwrap();
+    camera_read_thread.join().unwrap();
     Ok(())
 }
 
