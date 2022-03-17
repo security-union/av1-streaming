@@ -143,7 +143,7 @@ async fn main() -> Result<()> {
                 let (mut frame, age) = cam_rx.recv().unwrap();
                 // If age older than threshold, throw it away.
                 let frame_age = since_the_epoch().as_millis() - age;
-                info!("frame age {}", frame_age);
+                debug!("frame age {}", frame_age);
                 if frame_age > THRESHOLD_MILLIS {
                     warn!("throwing away old frame with age {} ms", frame_age);
                 }
