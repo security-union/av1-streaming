@@ -5,6 +5,7 @@ use anyhow::Result;
 use base64::encode;
 use bus::{Bus, BusReader};
 use futures_util::{SinkExt, StreamExt};
+use image::ImageBuffer;
 use image::Rgb;
 use nokhwa::{Camera, CameraFormat, CaptureAPIBackend, FrameFormat};
 use rav1e::prelude::ChromaSampling;
@@ -28,6 +29,8 @@ struct VideoPacket {
     frameType: String,
     epochTime: Duration,
 }
+
+static THRESHOLD_MILLIS: u128 = 75;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -53,12 +56,12 @@ async fn main() -> Result<()> {
     enc.error_resilient = true;
     enc.speed_settings = SpeedSettings::from_preset(10);
     enc.rdo_lookahead_frames = 1;
-    enc.bitrate = 256;
+    enc.bitrate = 2560;
     enc.min_key_frame_interval = 20;
     enc.max_key_frame_interval = 50;
     enc.low_latency = true;
-    enc.min_quantizer = 100;
-    enc.quantizer = 120;
+    enc.min_quantizer = 50;
+    enc.quantizer = 100;
     enc.still_picture = false;
     enc.tiles = 8;
     enc.chroma_sampling = ChromaSampling::Cs444;
@@ -73,6 +76,10 @@ async fn main() -> Result<()> {
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
 
     let (fps_tx, fps_rx): (Sender<u128>, Receiver<u128>) = mpsc::channel();
+    let (cam_tx, cam_rx): (
+        Sender<(ImageBuffer<Rgb<u8>, Vec<u8>>, u128)>,
+        Receiver<(ImageBuffer<Rgb<u8>, Vec<u8>>, u128)>,
+    ) = mpsc::channel();
 
     let devices = nokhwa::query_devices(CaptureAPIBackend::Video4Linux)?;
     info!("available cameras: {:?}", devices);
@@ -99,7 +106,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    let encoding_thread = thread::spawn(move || {
+    let camera_thread = thread::spawn(move || {
         loop {
             {
                 info!("waiting for browser...");
@@ -109,8 +116,6 @@ async fn main() -> Result<()> {
                     continue;
                 }
             }
-            let fps_tx_copy = fps_tx.clone();
-            let mut ctx: Context<u8> = cfg.new_context().unwrap();
             let mut camera = Camera::new(
                 video_device_index, // index
                 Some(CameraFormat::new_from(
@@ -123,16 +128,25 @@ async fn main() -> Result<()> {
             .unwrap();
             camera.open_stream().unwrap();
             loop {
-                {
-                    debug!("blocking after starting camera");
-                    let counter = counter.lock().unwrap();
-                    if *counter <= 0 {
-                        warn!("stopping the recording");
-                        break;
-                    }
-                }
+                let frame = camera.frame().unwrap();
+                cam_tx.send((frame, since_the_epoch().as_millis()));
+            }
+        }
+    });
+
+    let encoding_thread = thread::spawn(move || {
+        loop {
+            let fps_tx_copy = fps_tx.clone();
+            let mut ctx: Context<u8> = cfg.new_context().unwrap();
+            loop {
                 debug!("grabbing frame");
-                let mut frame = camera.frame().unwrap();
+                let (mut frame, age) = cam_rx.recv().unwrap();
+                // If age older than threshold, throw it away.
+                let frame_age = since_the_epoch().as_millis() - age;
+                info!("frame age {}", frame_age);
+                if frame_age > THRESHOLD_MILLIS {
+                    warn!("throwing away old frame with age {} ms", frame_age);
+                }
                 let mut r_slice: Vec<u8> = vec![];
                 let mut g_slice: Vec<u8> = vec![];
                 let mut b_slice: Vec<u8> = vec![];
@@ -219,6 +233,7 @@ async fn main() -> Result<()> {
     warp::serve(routes).run(([0, 0, 0, 0], 8080)).await;
     encoding_thread.join().unwrap();
     fps_thread.join().unwrap();
+    camera_thread.join().unwrap();
     Ok(())
 }
 
