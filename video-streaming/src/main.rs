@@ -49,7 +49,6 @@ async fn main() -> Result<()> {
         .flatten()
         .unwrap_or(10u32);
     warn!("Framerate {framerate}");
-
     enc.width = width;
     enc.height = height;
     enc.bit_depth = 8;
@@ -67,10 +66,10 @@ async fn main() -> Result<()> {
     enc.chroma_sampling = ChromaSampling::Cs444;
 
     let bus: Arc<Mutex<Bus<String>>> = Arc::new(Mutex::new(bus::Bus::new(10)));
-    let counter: Arc<Mutex<u16>> = Arc::new(Mutex::new(0));
+    let client_counter: Arc<Mutex<u16>> = Arc::new(Mutex::new(0));
     let bus_copy = bus.clone();
     let add_bus = warp::any().map(move || bus.clone());
-    let web_socket_counter = counter.clone();
+    let web_socket_counter = client_counter.clone();
     let add_counter = warp::any().map(move || web_socket_counter.clone());
 
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
@@ -106,12 +105,12 @@ async fn main() -> Result<()> {
         }
     });
 
-    let camera_read_thread = thread::spawn(move || {
+    let camera_thread = thread::spawn(move || {
         loop {
             {
                 info!("waiting for browser...");
                 thread::sleep(Duration::from_millis(200));
-                let counter = counter.lock().unwrap();
+                let counter = client_counter.lock().unwrap();
                 if *counter <= 0 {
                     continue;
                 }
@@ -129,7 +128,7 @@ async fn main() -> Result<()> {
             camera.open_stream().unwrap();
             loop {
                 {
-                    let counter = counter.lock().unwrap();
+                    let counter = client_counter.lock().unwrap();
                     if *counter <= 0 {
                         break;
                     }
@@ -140,7 +139,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    let encoding_thread = thread::spawn(move || {
+    let encoder_thread = thread::spawn(move || {
         loop {
             let fps_tx_copy = fps_tx.clone();
             let mut ctx: Context<u8> = cfg.new_context().unwrap();
@@ -236,10 +235,11 @@ async fn main() -> Result<()> {
                 ws.on_upgrade(|ws| client_connection(ws, reader, counter_copy))
             },
         );
+    // WebSocker server thread
     warp::serve(routes).run(([0, 0, 0, 0], 8080)).await;
-    encoding_thread.join().unwrap();
+    encoder_thread.join().unwrap();
     fps_thread.join().unwrap();
-    camera_read_thread.join().unwrap();
+    camera_thread.join().unwrap();
     Ok(())
 }
 
