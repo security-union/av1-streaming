@@ -5,6 +5,8 @@ use anyhow::Result;
 use base64::encode;
 use bus::{Bus, BusReader};
 use futures_util::{SinkExt, StreamExt};
+use image::codecs;
+use image::ColorType;
 use image::ImageBuffer;
 use image::Rgb;
 use nokhwa::{Camera, CameraFormat, CaptureAPIBackend, FrameFormat};
@@ -13,6 +15,7 @@ use rav1e::*;
 use rav1e::{config::SpeedSettings, prelude::FrameType};
 use serde::{Deserialize, Serialize};
 use serde_json;
+use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -26,11 +29,30 @@ use warp::{
 #[derive(Serialize, Deserialize, Debug)]
 struct VideoPacket {
     data: Option<String>,
-    frameType: String,
+    frameType: Option<String>,
     epochTime: Duration,
+    encoding: Encoder,
 }
 
-static THRESHOLD_MILLIS: u128 = 75;
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+enum Encoder {
+    MJPEG,
+    AV1,
+}
+
+impl FromStr for Encoder {
+    type Err = ();
+
+    fn from_str(input: &str) -> Result<Encoder, Self::Err> {
+        match input {
+            "MJPEG" => Ok(Encoder::MJPEG),
+            "AV1" => Ok(Encoder::AV1),
+            _ => Err(()),
+        }
+    }
+}
+
+static THRESHOLD_MILLIS: u128 = 1000;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -48,6 +70,12 @@ async fn main() -> Result<()> {
         .map(|n| n.parse::<u32>().ok())
         .flatten()
         .unwrap_or(10u32);
+    let encoder = env::var("ENCODER")
+        .ok()
+        .map(|o| Encoder::from_str(o.as_ref()).ok())
+        .flatten()
+        .unwrap_or(Encoder::AV1);
+
     warn!("Framerate {framerate}");
     enc.width = width;
     enc.height = height;
@@ -55,21 +83,23 @@ async fn main() -> Result<()> {
     enc.error_resilient = true;
     enc.speed_settings = SpeedSettings::from_preset(10);
     enc.rdo_lookahead_frames = 1;
-    enc.bitrate = 2560;
     enc.min_key_frame_interval = 20;
     enc.max_key_frame_interval = 50;
     enc.low_latency = true;
-    enc.min_quantizer = 50;
-    enc.quantizer = 100;
+    enc.min_quantizer = 25;
+    enc.quantizer = 50;
     enc.still_picture = false;
-    enc.tiles = 8;
+    enc.tiles = 4;
     enc.chroma_sampling = ChromaSampling::Cs444;
 
     let bus: Arc<Mutex<Bus<String>>> = Arc::new(Mutex::new(bus::Bus::new(10)));
-    let client_counter: Arc<Mutex<u16>> = Arc::new(Mutex::new(0));
     let bus_copy = bus.clone();
     let add_bus = warp::any().map(move || bus.clone());
+
+    let client_counter: Arc<Mutex<u16>> = Arc::new(Mutex::new(0));
     let web_socket_counter = client_counter.clone();
+
+    // Add counter to warp so that we can access it when we add/remove connections
     let add_counter = warp::any().map(move || web_socket_counter.clone());
 
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
@@ -144,13 +174,31 @@ async fn main() -> Result<()> {
             let fps_tx_copy = fps_tx.clone();
             let mut ctx: Context<u8> = cfg.new_context().unwrap();
             loop {
-                debug!("grabbing frame");
                 let (mut frame, age) = cam_rx.recv().unwrap();
                 // If age older than threshold, throw it away.
                 let frame_age = since_the_epoch().as_millis() - age;
                 debug!("frame age {}", frame_age);
                 if frame_age > THRESHOLD_MILLIS {
                     warn!("throwing away old frame with age {} ms", frame_age);
+                    continue;
+                }
+                if encoder == Encoder::MJPEG {
+                    let mut buf: Vec<u8> = Vec::new();
+                    let mut jpeg_encoder =
+                        codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 80);
+                    jpeg_encoder
+                        .encode_image(&frame)
+                        .map_err(|e| error!("{:?}", e));
+                    let frame = VideoPacket {
+                        data: Some(encode(&buf)),
+                        frameType: None,
+                        epochTime: since_the_epoch(),
+                        encoding: encoder.clone(),
+                    };
+                    let json = serde_json::to_string(&frame).unwrap();
+                    bus_copy.lock().unwrap().broadcast(json);
+                    fps_tx_copy.send(since_the_epoch().as_millis()).unwrap();
+                    continue;
                 }
                 let mut r_slice: Vec<u8> = vec![];
                 let mut g_slice: Vec<u8> = vec![];
@@ -197,8 +245,9 @@ async fn main() -> Result<()> {
                         debug!("read thread: base64 Encoded packet {}", pkt.input_frameno);
                         let frame = VideoPacket {
                             data: Some(data),
-                            frameType: frame_type.to_string(),
+                            frameType: Some(frame_type.to_string()),
                             epochTime: since_the_epoch(),
+                            encoding: encoder.clone(),
                         };
                         let json = serde_json::to_string(&frame).unwrap();
                         bus_copy.lock().unwrap().broadcast(json);

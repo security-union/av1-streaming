@@ -1,13 +1,12 @@
 #!/bin/bash -e
 
 USER=ubuntu
-PI_IP=192.168.7.233
+PI_IP=192.168.18.39
 TARGET=aarch64-unknown-linux-gnu
 
 sudo apt update
 sudo apt install -y libclang-dev libv4l-dev
 
-export NATS_URL=localhost:4222
 # build binary
 cargo build --release --target $TARGET
 
