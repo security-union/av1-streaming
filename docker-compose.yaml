@@ -30,5 +30,6 @@ services:
       - ./web-ui/src:/app/src
     command: npm start
     environment:
-      - REACT_APP_USE_LOCALHOST=true
+      - REACT_APP_USE_LOCALHOST=false
       - REACT_APP_BROWSER_TEST=false
+      - REACT_APP_RASPBERRY_PI_IP=192.168.18.11

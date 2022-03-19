@@ -44,6 +44,9 @@ export const WebSocketDemo = () => {
   useEffect(() => {
     try {
       const payload = lastJsonMessage;
+      if (!payload) {
+        return
+      }
       const data = toByteArray(payload.data);
       if (BROWSER_TEST) {
         const chunk = new EncodedVideoChunk({
@@ -70,8 +73,11 @@ export const WebSocketDemo = () => {
           duration: 0,
           data,
         });
-        // @ts-ignore
-        videoDecoder.decode(chunk);
+        
+        if (videoDecoder) {
+          // @ts-ignore
+          videoDecoder.decode(chunk);
+        }
       }
     } catch (e: any) {
       console.error("error ", e);
