@@ -33,4 +33,4 @@ services:
     environment:
       - REACT_APP_USE_LOCALHOST=false
       - REACT_APP_BROWSER_TEST=false
-      - REACT_APP_RASPBERRY_PI_IP=192.168.18.11
+      - REACT_APP_RASPBERRY_PI_IP=192.168.18.39

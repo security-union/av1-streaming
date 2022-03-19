@@ -179,7 +179,7 @@ async fn main() -> Result<()> {
                 let frame_age = since_the_epoch().as_millis() - age;
                 debug!("frame age {}", frame_age);
                 if frame_age > THRESHOLD_MILLIS {
-                    warn!("throwing away old frame with age {} ms", frame_age);
+                    debug!("throwing away old frame with age {} ms", frame_age);
                     continue;
                 }
                 if encoder == Encoder::MJPEG {
