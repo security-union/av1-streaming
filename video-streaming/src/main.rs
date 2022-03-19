@@ -128,6 +128,12 @@ async fn main() -> Result<()> {
             .unwrap();
             camera.open_stream().unwrap();
             loop {
+                {
+                    let counter = counter.lock().unwrap();
+                    if *counter <= 0 {
+                        break;
+                    }
+                }
                 let frame = camera.frame().unwrap();
                 cam_tx.send((frame, since_the_epoch().as_millis()));
             }
