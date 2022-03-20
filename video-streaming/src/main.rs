@@ -86,8 +86,8 @@ async fn main() -> Result<()> {
     enc.min_key_frame_interval = 20;
     enc.max_key_frame_interval = 50;
     enc.low_latency = true;
-    enc.min_quantizer = 25;
-    enc.quantizer = 50;
+    enc.min_quantizer = 50;
+    enc.quantizer = 100;
     enc.still_picture = false;
     enc.tiles = 4;
     enc.chroma_sampling = ChromaSampling::Cs444;
