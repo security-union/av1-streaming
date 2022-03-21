@@ -1,0 +1,36 @@
+version: "3.8"
+services:
+  video-stream:
+    privileged: true
+    build:
+      context: .
+    command: cargo watch -x 'run  --release --bin video-streaming'
+    environment:
+      - RUST_LOG=info
+      - FRAMERATE=30
+      - VIDEO_DEVICE_INDEX=0
+      - ENCODER=MJPEG
+    volumes:
+      - /app/target
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/video2:/dev/video2
+      - /dev/video3:/dev/video3
+      - /dev/video4:/dev/video4
+      - /dev/video5:/dev/video5
+      - /dev/video6:/dev/video6
+      - ./video-streaming:/app/video-streaming
+    ports:
+      - 8080:8080
+  web-ui:
+    build:
+      context: ./web-ui
+    ports:
+      - 3000:3000
+    volumes:
+      - ./web-ui/src:/app/src
+    command: npm start
+    environment:
+      - REACT_APP_USE_LOCALHOST=false
+      - REACT_APP_BROWSER_TEST=false
+      - REACT_APP_RASPBERRY_PI_IP=192.168.18.39
