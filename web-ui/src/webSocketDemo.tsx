@@ -44,6 +44,9 @@ export const WebSocketDemo = () => {
   useEffect(() => {
     try {
       const payload = lastJsonMessage;
+      if (!payload) {
+        return
+      }
       const data = toByteArray(payload.data);
       if (BROWSER_TEST) {
         const chunk = new EncodedVideoChunk({
@@ -64,14 +67,32 @@ export const WebSocketDemo = () => {
           console.error("no data");
           return;
         }
-        const chunk = new EncodedVideoChunk({
-          timestamp: 0,
-          type: payload.frameType,
-          duration: 0,
-          data,
-        });
-        // @ts-ignore
-        videoDecoder.decode(chunk);
+        
+        
+        if (videoDecoder && payload.encoding == "AV1") {
+          const chunk = new EncodedVideoChunk({
+            timestamp: 0,
+            type: payload.frameType,
+            duration: 0,
+            data,
+          });
+          // @ts-ignore
+          videoDecoder.decode(chunk);
+        } else if (payload.encoding == "MJPEG") {
+          const image = new Image();
+          const blob = new Blob([data], { type: "image/jpg" });
+          const url = window.URL.createObjectURL(blob);
+
+          image.onload = function() {
+            createImageBitmap(image).then(imageBitmap => {
+              console.log(imageBitmap);
+              const canvas = canvasRef.current;
+              // @ts-ignore
+              canvas.getContext('2d').drawImage(imageBitmap, 0, 0)
+            });
+          };  
+          image.src = url;        
+        }
       }
     } catch (e: any) {
       console.error("error ", e);
