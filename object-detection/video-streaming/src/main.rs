@@ -24,6 +24,7 @@ use std::{env, thread};
 use tensorflow::Graph;
 use tensorflow::ImportGraphDefOptions;
 use tensorflow::Operation;
+use tensorflow::SavedModelBundle;
 use tensorflow::Session;
 use tensorflow::SessionOptions;
 use tensorflow::SessionRunArgs;
@@ -400,10 +401,8 @@ impl ObjectDetector {
     ///Initialize the tensorflow session with the open images ssd mobilenet v2
     pub fn new() -> Self {
         let mut graph = Graph::new();
-        let proto = include_bytes!("../models/openimages_v4_ssd_mobilenet_v2_1/model.pb");
-        graph
-            .import_graph_def(proto, &ImportGraphDefOptions::new())
-            .unwrap();
+        let model = include_bytes!("saved_model.pb");
+        graph.import_graph_def(b"model", &ImportGraphDefOptions::new()).unwrap();
         let session = Session::new(&SessionOptions::new(), &graph).unwrap();
         ObjectDetector {
             graph,
@@ -438,8 +437,7 @@ impl ObjectDetector {
             u64::from(image_dimension.height),
             u64::from(image_dimension.width),
             3,
-        ])
-        .with_values(image_array_expanded.as_slice().unwrap())?;
+        ]);
 
         Ok((image_tensor_op, input_image_tensor))
     }
