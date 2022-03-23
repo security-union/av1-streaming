@@ -5,6 +5,7 @@ use anyhow::Result;
 use base64::encode;
 use bus::{Bus, BusReader};
 use futures_util::{SinkExt, StreamExt};
+use image::EncodableLayout;
 use image::codecs;
 use image::ImageBuffer;
 use image::Rgb;
@@ -15,6 +16,11 @@ use rav1e::*;
 use rav1e::{config::SpeedSettings, prelude::FrameType};
 use serde::{Deserialize, Serialize};
 use serde_json;
+use std::str::FromStr;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::{env, thread};
 use tensorflow::Graph;
 use tensorflow::ImportGraphDefOptions;
 use tensorflow::Operation;
@@ -22,12 +28,6 @@ use tensorflow::Session;
 use tensorflow::SessionOptions;
 use tensorflow::SessionRunArgs;
 use tensorflow::Tensor;
-use std::collections::HashMap;
-use std::str::FromStr;
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use std::{env, thread};
 use warp::{
     ws::{Message, WebSocket},
     Filter,
@@ -117,6 +117,10 @@ async fn main() -> Result<()> {
         Sender<(ImageBuffer<Rgb<u8>, Vec<u8>>, u128)>,
         Receiver<(ImageBuffer<Rgb<u8>, Vec<u8>>, u128)>,
     ) = mpsc::channel();
+    let (detector_tx, detector_rx): (
+        Sender<(ImageBuffer<Rgb<u8>, Vec<u8>>, u128)>,
+        Receiver<(ImageBuffer<Rgb<u8>, Vec<u8>>, u128)>,
+    ) = mpsc::channel();
 
     let devices = nokhwa::query_devices(CaptureAPIBackend::Video4Linux)?;
     info!("available cameras: {:?}", devices);
@@ -172,7 +176,32 @@ async fn main() -> Result<()> {
                     }
                 }
                 let frame = camera.frame().unwrap();
-                cam_tx.send((frame, since_the_epoch().as_millis()));
+                cam_tx.send((frame, since_the_epoch().as_millis())).unwrap();
+            }
+        }
+    });
+
+    let detection_thread = thread::spawn(move || {
+        let mut detector = ObjectDetector::new();
+        loop {
+            let (frame, age) = cam_rx.recv().unwrap();
+            let frame_age = since_the_epoch().as_millis() - age;
+            if frame_age > THRESHOLD_MILLIS {
+                debug!("throwing away old frame with age {} ms", frame_age);
+                continue;
+            }
+            let image = GenericImage::new(frame.width(), frame.height(), frame.as_bytes().to_vec());
+            detector.input(image);
+            match detector.run() {
+                Ok(d) => {
+                    info!("Detection exited successfully!");
+                    info!("Num Boxes: {:?}", d.boxes.len());
+                    detector_tx.send((frame, age)).unwrap();
+                },
+                Err(e) => {
+                    error!("Error with detection {:?}", e);
+                    detector_tx.send((frame, age)).unwrap();
+                },
             }
         }
     });
@@ -182,7 +211,7 @@ async fn main() -> Result<()> {
             let fps_tx_copy = fps_tx.clone();
             let mut ctx: Context<u8> = cfg.new_context().unwrap();
             loop {
-                let (mut frame, age) = cam_rx.recv().unwrap();
+                let (mut frame, age) = detector_rx.recv().unwrap();
                 // If age older than threshold, throw it away.
                 let frame_age = since_the_epoch().as_millis() - age;
                 debug!("frame age {}", frame_age);
@@ -353,10 +382,18 @@ pub fn since_the_epoch() -> Duration {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap()
 }
 
+pub struct Detection {
+    boxes: Tensor<f32>,
+    class_entities: Tensor<String>,
+    class_names: Tensor<String>,
+    class_labels: Tensor<i64>,
+    scores: Tensor<f32>,
+}
+
 pub struct ObjectDetector {
     graph: Graph,
     session: Session,
-    image: Box<dyn DetectionImage + Send>
+    image: Box<dyn DetectionImage + Send>,
 }
 
 impl ObjectDetector {
@@ -364,12 +401,14 @@ impl ObjectDetector {
     pub fn new() -> Self {
         let mut graph = Graph::new();
         let proto = include_bytes!("../models/openimages_v4_ssd_mobilenet_v2_1/model.pb");
-        graph.import_graph_def(proto, &ImportGraphDefOptions::new()).unwrap();
+        graph
+            .import_graph_def(proto, &ImportGraphDefOptions::new())
+            .unwrap();
         let session = Session::new(&SessionOptions::new(), &graph).unwrap();
         ObjectDetector {
             graph,
             session,
-            image: Box::new(GenericImage::default())
+            image: Box::new(GenericImage::default()),
         }
     }
 
@@ -407,17 +446,26 @@ impl ObjectDetector {
 
     ///Run the inference on the inputted image transforming the image to the shape of the image input tensor,
     ///performing the inferencing, and mapping the output tensors into the returned HashMap.
-    pub fn run(&mut self) -> Result<HashMap<&str, Tensor<f32>>, Box<dyn std::error::Error>> {
+    pub fn run(&mut self) -> Result<Detection, Box<dyn std::error::Error>> {
         let (image_tensor_op, input_image_tensor) = self.input_transform()?;
 
         let mut session_args = SessionRunArgs::new();
         session_args.add_feed(&image_tensor_op, 0, &input_image_tensor);
 
-        let num_detections = self.graph.operation_by_name_required("num_detections")?;
-        let num_detections_token = session_args.request_fetch(&num_detections, 0);
+        let class_entities = self
+            .graph
+            .operation_by_name_required("detection_class_entities")?;
+        let class_entities_token = session_args.request_fetch(&class_entities, 0);
 
-        let classes = self.graph.operation_by_name_required("detection_classes")?;
-        let classes_token = session_args.request_fetch(&classes, 0);
+        let class_labels = self
+            .graph
+            .operation_by_name_required("detection_class_labels")?;
+        let class_labels_token = session_args.request_fetch(&class_labels, 0);
+
+        let class_names = self
+            .graph
+            .operation_by_name_required("detection_class_names")?;
+        let class_names_token = session_args.request_fetch(&class_names, 0);
 
         let boxes = self.graph.operation_by_name_required("detection_boxes")?;
         let boxes_token = session_args.request_fetch(&boxes, 0);
@@ -427,18 +475,19 @@ impl ObjectDetector {
 
         self.session.run(&mut session_args)?;
 
-        let num_detections_tensor = session_args.fetch::<f32>(num_detections_token)?;
-        let classes_tensor = session_args.fetch::<f32>(classes_token)?;
-        let boxes_tensor = session_args.fetch::<f32>(boxes_token)?;
-        let scores_tensor = session_args.fetch::<f32>(scores_token)?;
+        let boxes = session_args.fetch::<f32>(boxes_token)?;
+        let class_entities = session_args.fetch::<String>(class_entities_token)?;
+        let class_labels = session_args.fetch::<i64>(class_labels_token)?;
+        let class_names = session_args.fetch::<String>(class_names_token)?;
+        let scores = session_args.fetch::<f32>(scores_token)?;
 
-        let mut tensor_map = HashMap::new();
-        tensor_map.insert("num_detections", num_detections_tensor);
-        tensor_map.insert("detection_classes", classes_tensor);
-        tensor_map.insert("detection_boxes", boxes_tensor);
-        tensor_map.insert("detection_scores", scores_tensor);
-
-        Ok(tensor_map)
+        Ok(Detection {
+            boxes,
+            class_entities,
+            class_labels,
+            class_names,
+            scores,
+        })
     }
 }
 
