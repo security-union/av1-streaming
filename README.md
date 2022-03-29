@@ -3,8 +3,7 @@
 
 # 🔥🔥 Fearless AV1 live streaming for Linux and Raspberry PI using the rav1e encoder and Chrome's WebCodecs library 🔥🔥
 
-![Peek 2022-03-15 00-26](https://user-images.githubusercontent.com/1176339/158306781-101b8cae-5b9f-4f1d-aec6-b6f097a54be1.gif)
-
+[![IMAGE ALT TEXT](http://img.youtube.com/vi/ysqn2kKsvoE/0.jpg)](https://www.youtube.com/watch?v=ysqn2kKsvoE "Video Streaming")
 
 ## Goal
 Use the latest and greatest open source technology to live stream from a Raspberry PI to the Chrome browser.
@@ -29,6 +28,9 @@ Depending on your webcam, you might need to customize the framerate in the docke
 ```
 
 If you notice that the FPS is too low, just set FRAMERATE to 10
+
+![Peek 2022-03-15 00-26](https://user-images.githubusercontent.com/1176339/158306781-101b8cae-5b9f-4f1d-aec6-b6f097a54be1.gif)
+
 
 ## AV1 Streaming
 AOMedia Video 1 (AV1) is an open, royalty-free video coding format initially designed for video transmissions over the Internet. It was developed as a successor to VP9 by the Alliance for Open Media (AOMedia),
