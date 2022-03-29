@@ -3,7 +3,7 @@
 
 # 🔥🔥 Fearless AV1 live streaming for Linux and Raspberry PI using the rav1e encoder and Chrome's WebCodecs library 🔥🔥
 
-[![IMAGE ALT TEXT](http://img.youtube.com/vi/ysqn2kKsvoE/0.jpg)](https://www.youtube.com/watch?v=ysqn2kKsvoE "Video Streaming")
+[![IMAGE ALT TEXT](http://img.youtube.com/vi/ysqn2kKsvoE/maxresdefault.jpg)](https://www.youtube.com/watch?v=ysqn2kKsvoE "Video Streaming")
 
 ## Goal
 Use the latest and greatest open source technology to live stream from a Raspberry PI to the Chrome browser.
