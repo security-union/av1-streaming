@@ -52,14 +52,14 @@ impl FromStr for Encoder {
     }
 }
 
-static THRESHOLD_MILLIS: u128 = 1000;
+static THRESHOLD_MILLIS: u128 = 100;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     env_logger::init();
     let mut enc = EncoderConfig::default();
-    let width = 640;
-    let height = 480;
+    let width = 1920;
+    let height = 1080;
     let video_device_index: usize = env::var("VIDEO_DEVICE_INDEX")
         .ok()
         .map(|n| n.parse::<usize>().ok())
@@ -70,6 +70,11 @@ async fn main() -> Result<()> {
         .map(|n| n.parse::<u32>().ok())
         .flatten()
         .unwrap_or(10u32);
+    let port: u16 = env::var("PORT")
+        .ok()
+        .map(|n| n.parse::<u16>().ok())
+        .flatten()
+        .unwrap_or(8080u16);
     let encoder = env::var("ENCODER")
         .ok()
         .map(|o| Encoder::from_str(o.as_ref()).ok())
@@ -92,7 +97,7 @@ async fn main() -> Result<()> {
     enc.tiles = 4;
     enc.chroma_sampling = ChromaSampling::Cs444;
 
-    let bus: Arc<Mutex<Bus<String>>> = Arc::new(Mutex::new(bus::Bus::new(10)));
+    let bus: Arc<Mutex<Bus<Vec<u8>>>> = Arc::new(Mutex::new(bus::Bus::new(10)));
     let bus_copy = bus.clone();
     let add_bus = warp::any().map(move || bus.clone());
 
@@ -189,14 +194,14 @@ async fn main() -> Result<()> {
                     jpeg_encoder
                         .encode_image(&frame)
                         .map_err(|e| error!("{:?}", e));
-                    let frame = VideoPacket {
-                        data: Some(encode(&buf)),
-                        frameType: None,
-                        epochTime: since_the_epoch(),
-                        encoding: encoder.clone(),
-                    };
-                    let json = serde_json::to_string(&frame).unwrap();
-                    bus_copy.lock().unwrap().broadcast(json);
+                    // let frame = VideoPacket {
+                    //     data: Some(encode(&buf)),
+                    //     frameType: None,
+                    //     epochTime: since_the_epoch(),
+                    //     encoding: encoder.clone(),
+                    // };
+                    // let json = serde_json::to_string(&frame).unwrap();
+                    bus_copy.lock().unwrap().broadcast(buf);
                     fps_tx_copy.send(since_the_epoch().as_millis()).unwrap();
                     continue;
                 }
@@ -250,7 +255,7 @@ async fn main() -> Result<()> {
                             encoding: encoder.clone(),
                         };
                         let json = serde_json::to_string(&frame).unwrap();
-                        bus_copy.lock().unwrap().broadcast(json);
+                        // bus_copy.lock().unwrap().broadcast(json);
                         debug!("time serializing {:?}", time_serializing.elapsed());
                         fps_tx_copy.send(since_the_epoch().as_millis()).unwrap();
                     }
@@ -275,7 +280,7 @@ async fn main() -> Result<()> {
         .and(add_bus)
         .and(add_counter)
         .map(
-            |ws: warp::ws::Ws, bus: Arc<Mutex<Bus<String>>>, counter: Arc<Mutex<u16>>| {
+            |ws: warp::ws::Ws, bus: Arc<Mutex<Bus<Vec<u8>>>>, counter: Arc<Mutex<u16>>| {
                 debug!("before creating upgrade");
                 // And then our closure will be called when it completes...
                 let reader = bus.lock().unwrap().add_rx();
@@ -285,7 +290,7 @@ async fn main() -> Result<()> {
             },
         );
     // WebSocker server thread
-    warp::serve(routes).run(([0, 0, 0, 0], 8080)).await;
+    warp::serve(routes).run(([0, 0, 0, 0], port)).await;
     encoder_thread.join().unwrap();
     fps_thread.join().unwrap();
     camera_thread.join().unwrap();
@@ -308,7 +313,7 @@ fn to_ycbcr(pixel: &Rgb<u8>) -> (u8, u8, u8) {
 
 pub async fn client_connection(
     ws: WebSocket,
-    mut reader: BusReader<String>,
+    mut reader: BusReader<Vec<u8>>,
     counter: Arc<Mutex<u16>>,
 ) {
     info!("establishing client connection... {:?}", ws);
@@ -324,7 +329,7 @@ pub async fn client_connection(
         let next = reader.recv().unwrap();
         debug!("Forwarding video message");
         let time_serializing = Instant::now();
-        match client_ws_sender.send(Message::text(next)).await {
+        match client_ws_sender.send(Message::binary(next)).await {
             Ok(_) => {}
             Err(_e) => {
                 info!("blocking before removing connection {:?}", counter);
