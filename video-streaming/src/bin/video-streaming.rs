@@ -208,7 +208,7 @@ pub async fn client_connection(
     counter: Arc<Mutex<u16>>,
 ) {
     info!("establishing client connection... {:?}", ws);
-    let (mut client_ws_sender, mut client_ws_rcv) = ws.split();
+    let (mut client_ws_sender, _client_ws_rcv) = ws.split();
     {
         info!("blocking before adding connection {:?}", counter);
         let mut counter_ref = counter.lock().unwrap();
@@ -217,24 +217,6 @@ pub async fn client_connection(
         drop(counter_ref);
     }
 
-    tokio::task::spawn(async move {
-        while let Some(message) = client_ws_rcv.next().await {
-            let msg = message
-                .ok()
-                .map(|msg| {
-                    let packet: Result<OculusControllerState, protobuf::ProtobufError> =
-                        protobuf::Message::parse_from_bytes(msg.as_bytes());
-                    packet.ok()
-                })
-                .flatten();
-            match msg {
-                Some(oculus) => {
-                    info!("got message {:?}", oculus);     
-                },
-                None => info!("unable to parse message")
-            }
-        }
-    });
     let sender = tokio::task::spawn(async move {
         loop {
             let next = reader.recv().unwrap();

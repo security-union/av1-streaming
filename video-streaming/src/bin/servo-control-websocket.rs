@@ -13,13 +13,18 @@
 // the hardware PWM peripheral instead. Check out the pwm_servo.rs example to
 // learn how to control a servo using hardware PWM.
 
-use std::error::Error;
-use log::info;
-use tokio::sync::mpsc::channel;
+use std::{error::Error, env};
+use futures_util::StreamExt;
+use log::{info, debug};
+use tokio::sync::mpsc::{channel, Sender, Receiver};
 use video_streaming::types::oculus_controller_state::{OculusControllerState, OculusControllerState_Vector2};
+
 use std::thread;
 use std::time::Duration;
-use tokio::time::{sleep};
+use warp::{
+    ws::{Message, WebSocket},
+    Filter,
+};
 
 use rppal::gpio::Gpio;
 
@@ -36,6 +41,11 @@ const PULSE_MAX_US: u64 = 1000;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let port: u16 = env::var("PORT")
+    .ok()
+    .map(|n| n.parse::<u16>().ok())
+    .flatten()
+    .unwrap_or(9080u16);
     env_logger::init();
     // Retrieve the GPIO pin and configure it as an output.
     let mut pin = Gpio::new()?.get(GPIO_PWM)?.into_output();
@@ -50,18 +60,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Sleep for 500 ms while the servo moves into position.
     thread::sleep(Duration::from_millis(500));
 
-    let (tx, mut rx) = channel(1);
-
-    let sender = tokio::spawn(async move {
-        loop {
-            for pulse in (-10..=10).step_by(1) {
-                let mut state: OculusControllerState = OculusControllerState::default();
-                state.mut_secondary_thumbstick().set_x((pulse as f32) / 10f32);
-                tx.send(state).await;
-                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-            }
-        }
-    });
+    let (tx, mut rx): (Sender<OculusControllerState>, Receiver<OculusControllerState>) = channel(1);
+    let add_tx = warp::any().map(move || tx.clone());
 
     let receiver = tokio::spawn(async move {
         while let Some(state) = rx.recv().await {
@@ -76,32 +76,50 @@ async fn main() -> Result<(), Box<dyn Error>> {
             );
         }
     });
-
-    sender.await;
+    let routes = warp::path("ws")
+    // The `ws()` filter will prepare the Websocket handshake.
+    .and(warp::ws())
+    .and(add_tx)
+    .map(
+        |ws: warp::ws::Ws, tx: Sender<OculusControllerState>| {
+            debug!("before creating upgrade");
+            // And then our closure will be called when it completes...
+            debug!("adding client connection");
+            ws.on_upgrade(|ws| client_connection(ws, tx))
+        },
+    );
+    // WebSocker server thread
+    warp::serve(routes).run(([0, 0, 0, 0], port)).await;
     receiver.await;
-
-
-
-    // let routes = warp::path("ws")
-    // // The `ws()` filter will prepare the Websocket handshake.
-    // .and(warp::ws())
-    // .and(add_bus)
-    // .and(add_counter)
-    // .map(
-    //     |ws: warp::ws::Ws, bus: Arc<Mutex<Bus<Vec<u8>>>>, counter: Arc<Mutex<u16>>| {
-    //         debug!("before creating upgrade");
-    //         // And then our closure will be called when it completes...
-    //         let reader = bus.lock().unwrap().add_rx();
-    //         let counter_copy = counter.clone();
-    //         debug!("adding client connection");
-    //         ws.on_upgrade(|ws| client_connection(ws, reader, counter_copy))
-    //     },
-    // );
-    // // WebSocker server thread
-    // warp::serve(routes).run(([0, 0, 0, 0], port)).await;
 
     Ok(())
 
     // When the pin variable goes out of scope, software-based PWM is automatically disabled.
     // You can manually disable PWM by calling the clear_pwm() method.
+}
+
+async fn client_connection(ws: WebSocket, tx: Sender<OculusControllerState>) {
+    info!("establishing client connection... {:?}", ws);
+    let (_client_ws_sender, mut client_ws_rcv) = ws.split();
+
+    let handle = tokio::task::spawn(async move {
+        while let Some(message) = client_ws_rcv.next().await {
+            let msg = message
+                .ok()
+                .map(|msg| {
+                    let packet: Result<OculusControllerState, protobuf::ProtobufError> =
+                        protobuf::Message::parse_from_bytes(msg.as_bytes());
+                    packet.ok()
+                })
+                .flatten();
+            match msg {
+                Some(oculus) => {
+                    info!("got message {:?}", oculus);
+                    tx.send(oculus); 
+                },
+                None => info!("unable to parse message")
+            }
+        }
+    });
+    handle.await;
 }
