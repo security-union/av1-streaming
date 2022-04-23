@@ -6,7 +6,6 @@ use base64::encode;
 use bus::{Bus, BusReader};
 use futures_util::{SinkExt, StreamExt};
 use image::codecs;
-use image::ColorType;
 use image::ImageBuffer;
 use image::Rgb;
 use nokhwa::{Camera, CameraFormat, CaptureAPIBackend, FrameFormat};
@@ -58,8 +57,17 @@ static THRESHOLD_MILLIS: u128 = 100;
 async fn main() -> Result<()> {
     env_logger::init();
     let mut enc = EncoderConfig::default();
-    let width = 1920;
-    let height = 1080;
+    let width: usize = env::var("VIDEO_WIDTH")
+        .ok()
+        .map(|n| n.parse::<usize>().ok())
+        .flatten()
+        .unwrap_or(1920);
+    let height: usize = env::var("VIDEO_HEIGHT")
+        .ok()
+        .map(|n| n.parse::<usize>().ok())
+        .flatten()
+        .unwrap_or(1080);
+
     let video_device_index: usize = env::var("VIDEO_DEVICE_INDEX")
         .ok()
         .map(|n| n.parse::<usize>().ok())
@@ -184,91 +192,18 @@ async fn main() -> Result<()> {
                 let frame_age = since_the_epoch().as_millis() - age;
                 debug!("frame age {}", frame_age);
                 if frame_age > THRESHOLD_MILLIS {
-                    debug!("throwing away old frame with age {} ms", frame_age);
+                    info!("throwing away old frame with age {} ms", frame_age);
                     continue;
                 }
                 if encoder == Encoder::MJPEG {
                     let mut buf: Vec<u8> = Vec::new();
                     let mut jpeg_encoder =
-                        codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 80);
+                        codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 30);
                     jpeg_encoder
                         .encode_image(&frame)
                         .map_err(|e| error!("{:?}", e));
-                    // let frame = VideoPacket {
-                    //     data: Some(encode(&buf)),
-                    //     frameType: None,
-                    //     epochTime: since_the_epoch(),
-                    //     encoding: encoder.clone(),
-                    // };
-                    // let json = serde_json::to_string(&frame).unwrap();
                     bus_copy.lock().unwrap().broadcast(buf);
                     fps_tx_copy.send(since_the_epoch().as_millis()).unwrap();
-                    continue;
-                }
-                let mut r_slice: Vec<u8> = vec![];
-                let mut g_slice: Vec<u8> = vec![];
-                let mut b_slice: Vec<u8> = vec![];
-                for pixel in frame.pixels_mut() {
-                    let (r, g, b) = to_ycbcr(pixel);
-                    r_slice.push(r);
-                    g_slice.push(g);
-                    b_slice.push(b);
-                }
-                let planes = vec![r_slice, g_slice, b_slice];
-                debug!("Creating new frame");
-                let mut frame = ctx.new_frame();
-                let encoding_time = Instant::now();
-                for (dst, src) in frame.planes.iter_mut().zip(planes) {
-                    dst.copy_from_raw_u8(&src, enc.width, 1);
-                }
-
-                match ctx.send_frame(frame) {
-                    Ok(_) => {
-                        debug!("queued frame");
-                    }
-                    Err(e) => match e {
-                        EncoderStatus::EnoughData => {
-                            debug!("Unable to append frame to the internal queue");
-                        }
-                        _ => {
-                            panic!("Unable to send frame");
-                        }
-                    },
-                }
-                debug!("receiving encoded frame");
-                match ctx.receive_packet() {
-                    Ok(pkt) => {
-                        debug!("time encoding {:?}", encoding_time.elapsed());
-                        debug!("read thread: base64 Encoding packet {}", pkt.input_frameno);
-                        let frame_type = if pkt.frame_type == FrameType::KEY {
-                            "key"
-                        } else {
-                            "delta"
-                        };
-                        let time_serializing = Instant::now();
-                        let data = encode(pkt.data);
-                        debug!("read thread: base64 Encoded packet {}", pkt.input_frameno);
-                        let frame = VideoPacket {
-                            data: Some(data),
-                            frameType: Some(frame_type.to_string()),
-                            epochTime: since_the_epoch(),
-                            encoding: encoder.clone(),
-                        };
-                        let json = serde_json::to_string(&frame).unwrap();
-                        // bus_copy.lock().unwrap().broadcast(json);
-                        debug!("time serializing {:?}", time_serializing.elapsed());
-                        fps_tx_copy.send(since_the_epoch().as_millis()).unwrap();
-                    }
-                    Err(e) => match e {
-                        EncoderStatus::LimitReached => {
-                            warn!("read thread: Limit reached");
-                        }
-                        EncoderStatus::Encoded => debug!("read thread: Encoded"),
-                        EncoderStatus::NeedMoreData => debug!("read thread: Need more data"),
-                        _ => {
-                            warn!("read thread: Unable to receive packet");
-                        }
-                    },
                 }
             }
         }

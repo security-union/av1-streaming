@@ -18,6 +18,7 @@ futures-util = "0.3"
 tokio = { version = "1.17.0", features = ["full"] }
 warp = "0.3"
 bus = "2.2.3"
+protobuf = "2.27.1"
 
 [dependencies.nokhwa]
 version = "0.9.4"
