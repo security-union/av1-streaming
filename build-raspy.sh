@@ -13,3 +13,5 @@ cargo build --release --target $TARGET
 # upload binary
 ssh-copy-id $USER@$PI_IP
 scp -r ./target/$TARGET/release/video-streaming $USER@$PI_IP:/tmp/
+scp -r ./target/$TARGET/release/servo-control-websocket $USER@$PI_IP:/tmp/
+scp -r ./target/$TARGET/release/servo-control-test $USER@$PI_IP:/tmp/
