@@ -19,6 +19,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::{env, thread};
+use video_streaming::types::oculus_controller_state::OculusControllerState;
 use warp::{
     ws::{Message, WebSocket},
     Filter,
@@ -115,9 +116,6 @@ async fn main() -> Result<()> {
     // Add counter to warp so that we can access it when we add/remove connections
     let add_counter = warp::any().map(move || web_socket_counter.clone());
 
-    let cfg = Config::new().with_encoder_config(enc).with_threads(4);
-
-    let (fps_tx, fps_rx): (Sender<u128>, Receiver<u128>) = mpsc::channel();
     let (cam_tx, cam_rx): (
         Sender<(ImageBuffer<Rgb<u8>, Vec<u8>>, u128)>,
         Receiver<(ImageBuffer<Rgb<u8>, Vec<u8>>, u128)>,
@@ -125,28 +123,6 @@ async fn main() -> Result<()> {
 
     let devices = nokhwa::query_devices(CaptureAPIBackend::Video4Linux)?;
     info!("available cameras: {:?}", devices);
-
-    let fps_thread = thread::spawn(move || {
-        let mut num_frames = 0;
-        let mut now_plus_1 = since_the_epoch().as_millis() + 1000;
-        warn!("Starting fps loop");
-        loop {
-            match fps_rx.recv() {
-                Ok(dur) => {
-                    if now_plus_1 < dur {
-                        warn!("FPS: {:?}", num_frames);
-                        num_frames = 0;
-                        now_plus_1 = since_the_epoch().as_millis() + 1000;
-                    } else {
-                        num_frames += 1;
-                    }
-                }
-                Err(e) => {
-                    error!("Receive error: {:?}", e);
-                }
-            }
-        }
-    });
 
     let camera_thread = thread::spawn(move || {
         loop {
@@ -184,8 +160,6 @@ async fn main() -> Result<()> {
 
     let encoder_thread = thread::spawn(move || {
         loop {
-            let fps_tx_copy = fps_tx.clone();
-            let mut ctx: Context<u8> = cfg.new_context().unwrap();
             loop {
                 let (mut frame, age) = cam_rx.recv().unwrap();
                 // If age older than threshold, throw it away.
@@ -203,7 +177,6 @@ async fn main() -> Result<()> {
                         .encode_image(&frame)
                         .map_err(|e| error!("{:?}", e));
                     bus_copy.lock().unwrap().broadcast(buf);
-                    fps_tx_copy.send(since_the_epoch().as_millis()).unwrap();
                 }
             }
         }
@@ -227,23 +200,8 @@ async fn main() -> Result<()> {
     // WebSocker server thread
     warp::serve(routes).run(([0, 0, 0, 0], port)).await;
     encoder_thread.join().unwrap();
-    fps_thread.join().unwrap();
     camera_thread.join().unwrap();
     Ok(())
-}
-
-fn clamp(val: f32) -> u8 {
-    return (val.round() as u8).max(0_u8).min(255_u8);
-}
-
-fn to_ycbcr(pixel: &Rgb<u8>) -> (u8, u8, u8) {
-    let [r, g, b] = pixel.0;
-
-    let y = 16_f32 + (65.481 * r as f32 + 128.553 * g as f32 + 24.966 * b as f32) / 255_f32;
-    let cb = 128_f32 + (-37.797 * r as f32 - 74.203 * g as f32 + 112.000 * b as f32) / 255_f32;
-    let cr = 128_f32 + (112.000 * r as f32 - 93.786 * g as f32 - 18.214 * b as f32) / 255_f32;
-
-    return (clamp(y), clamp(cb), clamp(cr));
 }
 
 pub async fn client_connection(
@@ -252,7 +210,7 @@ pub async fn client_connection(
     counter: Arc<Mutex<u16>>,
 ) {
     info!("establishing client connection... {:?}", ws);
-    let (mut client_ws_sender, _client_ws_rcv) = ws.split();
+    let (mut client_ws_sender, mut client_ws_rcv) = ws.split();
     {
         info!("blocking before adding connection {:?}", counter);
         let mut counter_ref = counter.lock().unwrap();
@@ -260,25 +218,47 @@ pub async fn client_connection(
         info!("adding connection, connection counter: {:?}", *counter_ref);
         drop(counter_ref);
     }
-    loop {
-        let next = reader.recv().unwrap();
-        debug!("Forwarding video message");
-        let time_serializing = Instant::now();
-        match client_ws_sender.send(Message::binary(next)).await {
-            Ok(_) => {}
-            Err(_e) => {
-                info!("blocking before removing connection {:?}", counter);
-                let mut counter_ref = counter.lock().unwrap();
-                *counter_ref = *counter_ref - 1;
-                info!(
-                    "Removing connection, connection counter: {:?}",
-                    *counter_ref
-                );
-                break;
+
+    tokio::task::spawn(async move {
+        while let Some(message) = client_ws_rcv.next().await {
+            let msg = message
+                .ok()
+                .map(|msg| {
+                    let packet: Result<OculusControllerState, protobuf::ProtobufError> =
+                        protobuf::Message::parse_from_bytes(msg.as_bytes());
+                    packet.ok()
+                })
+                .flatten();
+            match msg {
+                Some(oculus) => {
+                    info!("got message {:?}", oculus);     
+                },
+                None => info!("unable to parse message")
             }
         }
-        debug!("web_socket serializing {:?}", time_serializing.elapsed());
-    }
+    });
+    let sender = tokio::task::spawn(async move {
+        loop {
+            let next = reader.recv().unwrap();
+            debug!("Forwarding video message");
+            let time_serializing = Instant::now();
+            match client_ws_sender.send(Message::binary(next)).await {
+                Ok(_) => {}
+                Err(_e) => {
+                    info!("blocking before removing connection {:?}", counter);
+                    let mut counter_ref = counter.lock().unwrap();
+                    *counter_ref = *counter_ref - 1;
+                    info!(
+                        "Removing connection, connection counter: {:?}",
+                        *counter_ref
+                    );
+                    break;
+                }
+            }
+            debug!("web_socket serializing {:?}", time_serializing.elapsed());
+        }
+    });
+    sender.await;
 }
 
 pub fn since_the_epoch() -> Duration {
