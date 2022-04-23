@@ -2,7 +2,6 @@
 extern crate log;
 
 use anyhow::Result;
-use base64::encode;
 use bus::{Bus, BusReader};
 use futures_util::{SinkExt, StreamExt};
 use image::codecs;
@@ -11,9 +10,8 @@ use image::Rgb;
 use nokhwa::{Camera, CameraFormat, CaptureAPIBackend, FrameFormat};
 use rav1e::prelude::ChromaSampling;
 use rav1e::*;
-use rav1e::{config::SpeedSettings, prelude::FrameType};
+use rav1e::{config::SpeedSettings};
 use serde::{Deserialize, Serialize};
-use serde_json;
 use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
