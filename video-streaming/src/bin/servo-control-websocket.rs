@@ -13,10 +13,10 @@
 // the hardware PWM peripheral instead. Check out the pwm_servo.rs example to
 // learn how to control a servo using hardware PWM.
 
-use std::{error::Error, env};
+use std::{error::Error, env, sync::{Arc, Mutex}};
 use futures_util::StreamExt;
 use log::{info, debug};
-use tokio::sync::mpsc::{channel, Sender, Receiver};
+use tokio::sync::{mpsc::{channel, Sender, Receiver}};
 use video_streaming::types::oculus_controller_state::{OculusControllerState, OculusControllerState_Vector2};
 
 use std::thread;
@@ -26,7 +26,7 @@ use warp::{
     Filter,
 };
 
-use rppal::gpio::Gpio;
+use rppal::{gpio::Gpio, pwm::{Pwm, Channel, Polarity}};
 
 // Gpio uses BCM pin numbering. BCM GPIO 23 is tied to physical pin 16.
 const GPIO_PWM: u8 = 23;
@@ -48,14 +48,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .unwrap_or(9080u16);
     env_logger::init();
     // Retrieve the GPIO pin and configure it as an output.
-    let mut pin = Gpio::new()?.get(GPIO_PWM)?.into_output();
+    let pwm = Pwm::with_period(
+        Channel::Pwm0,
+        Duration::from_millis(PERIOD_MS),
+        Duration::from_micros(PULSE_MAX_US),
+        Polarity::Normal,
+        true,
+    )?;
+    // let safe_pin = Arc::new(Mutex::new(pwm));
 
     // Enable software-based PWM with the specified period, and rotate the servo by
     // setting the pulse width to its maximum value.
-    pin.set_pwm(
-        Duration::from_millis(PERIOD_MS),
-        Duration::from_micros(PULSE_NEUTRAL_US),
-    )?;
+    // {
+        pwm.set_pulse_width(
+            Duration::from_micros(PULSE_NEUTRAL_US),
+        )?;
+    // }
 
     // Sleep for 500 ms while the servo moves into position.
     thread::sleep(Duration::from_millis(500));
@@ -70,9 +78,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
             (PULSE_MIN_US as f32) + ((stick + 1f32) * 50f32 * ((PULSE_MAX_US - PULSE_MIN_US) as f32) / 100f32);
             info!("original {:?}", state);
             info!("transformed {:?}", transformed_value);
-            pin.set_pwm(
-                Duration::from_millis(PERIOD_MS),
-                Duration::from_micros((transformed_value as u64)),
+            pwm.set_pulse_width(
+                Duration::from_micros(transformed_value as u64),
             );
         }
     });
