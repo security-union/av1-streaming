@@ -51,8 +51,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     loop {
         for pulse in (PULSE_MIN_US..=PULSE_NEUTRAL_US).step_by(10) {
             pwm.set_pulse_width(Duration::from_micros(pulse))?;
-            print!("width {:?}", pulse);
-            thread::sleep(Duration::from_millis(20));
+            println!("width {:?}", pulse);
+            thread::sleep(Duration::from_millis(50));
         }
     }
     Ok(())

@@ -48,21 +48,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .unwrap_or(9080u16);
     env_logger::init();
     // Retrieve the GPIO pin and configure it as an output.
-    let pwm = Pwm::with_period(
-        Channel::Pwm0,
-        Duration::from_millis(PERIOD_MS),
-        Duration::from_micros(PULSE_MAX_US),
-        Polarity::Normal,
-        true,
-    )?;
+    // let pwm = Pwm::with_period(
+    //     Channel::Pwm0,
+    //     Duration::from_millis(PERIOD_MS),
+    //     Duration::from_micros(PULSE_MAX_US),
+    //     Polarity::Normal,
+    //     true,
+    // )?;
     // let safe_pin = Arc::new(Mutex::new(pwm));
 
     // Enable software-based PWM with the specified period, and rotate the servo by
     // setting the pulse width to its maximum value.
     // {
-        pwm.set_pulse_width(
-            Duration::from_micros(PULSE_NEUTRAL_US),
-        )?;
+        // pwm.set_pulse_width(
+        //     Duration::from_micros(PULSE_NEUTRAL_US),
+        // )?;
     // }
 
     // Sleep for 500 ms while the servo moves into position.
@@ -76,11 +76,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let stick = state.secondary_thumbstick.get_ref().x;
             let transformed_value =
             (PULSE_MIN_US as f32) + ((stick + 1f32) * 50f32 * ((PULSE_MAX_US - PULSE_MIN_US) as f32) / 100f32);
-            info!("original {:?}", state);
-            info!("transformed {:?}", transformed_value);
-            pwm.set_pulse_width(
-                Duration::from_micros(transformed_value as u64),
-            );
+            println!("pulse {:?}", transformed_value);
+            // pwm.set_pulse_width(
+            //     Duration::from_micros(transformed_value as u64),
+            // );
         }
     });
     let routes = warp::path("ws")
@@ -121,7 +120,7 @@ async fn client_connection(ws: WebSocket, tx: Sender<OculusControllerState>) {
                 .flatten();
             match msg {
                 Some(oculus) => {
-                    info!("got message {:?}", oculus);
+                    debug!("got message {:?}", oculus);
                     tx.send(oculus).await; 
                 },
                 None => info!("unable to parse message")
