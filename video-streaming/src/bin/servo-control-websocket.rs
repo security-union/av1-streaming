@@ -26,11 +26,6 @@ use warp::{
     Filter,
 };
 
-use rppal::{gpio::Gpio, pwm::{Pwm, Channel, Polarity}};
-
-// Gpio uses BCM pin numbering. BCM GPIO 23 is tied to physical pin 16.
-const GPIO_PWM: u8 = 23;
-
 // Servo configuration. Change these values based on your servo's verified safe
 // minimum and maximum values.
 //
@@ -38,6 +33,7 @@ const PERIOD_MS: u64 = 250;
 const PULSE_MIN_US: u64 = 500;
 const PULSE_NEUTRAL_US: u64 = 750;
 const PULSE_MAX_US: u64 = 1000;
+const DC_MOTOR_MAX_DUTY_CYCLE: f32 = 75f32;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -47,23 +43,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .flatten()
     .unwrap_or(9080u16);
     env_logger::init();
-    // Retrieve the GPIO pin and configure it as an output.
-    // let pwm = Pwm::with_period(
-    //     Channel::Pwm0,
-    //     Duration::from_millis(PERIOD_MS),
-    //     Duration::from_micros(PULSE_MAX_US),
-    //     Polarity::Normal,
-    //     true,
-    // )?;
-    // let safe_pin = Arc::new(Mutex::new(pwm));
-
-    // Enable software-based PWM with the specified period, and rotate the servo by
-    // setting the pulse width to its maximum value.
-    // {
-        // pwm.set_pulse_width(
-        //     Duration::from_micros(PULSE_NEUTRAL_US),
-        // )?;
-    // }
 
     // Sleep for 500 ms while the servo moves into position.
     thread::sleep(Duration::from_millis(500));
@@ -74,12 +53,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let receiver = tokio::spawn(async move {
         while let Some(state) = rx.recv().await {
             let stick = state.secondary_thumbstick.get_ref().x;
-            let transformed_value =
+            let servo =
             (PULSE_MIN_US as f32) + ((stick + 1f32) * 50f32 * ((PULSE_MAX_US - PULSE_MIN_US) as f32) / 100f32);
-            println!("pulse {:?}", transformed_value);
-            // pwm.set_pulse_width(
-            //     Duration::from_micros(transformed_value as u64),
-            // );
+
+            let (in1, in2) = compute_h_bridge_input_signals(state);
+            println!("servo {:?} in1 {:?} in2 {:?}", servo, in1, in2);
         }
     });
     let routes = warp::path("ws")
@@ -128,4 +106,15 @@ async fn client_connection(ws: WebSocket, tx: Sender<OculusControllerState>) {
         }
     });
     handle.await;
+}
+
+fn compute_h_bridge_input_signals(state: OculusControllerState) -> (i16, i16) {
+    let y = (state.get_primary_thumbstick().get_y() * DC_MOTOR_MAX_DUTY_CYCLE) as i16; // -1 ... 1
+    if y > 0i16 {
+        // forward
+        (y, 0)
+    } else {
+        // back
+        (0, y)
+    }
 }
