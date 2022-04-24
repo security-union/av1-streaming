@@ -115,7 +115,7 @@ async fn client_connection(ws: WebSocket, tx: Sender<OculusControllerState>) {
             match msg {
                 Some(oculus) => {
                     info!("got message {:?}", oculus);
-                    tx.send(oculus); 
+                    tx.send(oculus).await; 
                 },
                 None => info!("unable to parse message")
             }
