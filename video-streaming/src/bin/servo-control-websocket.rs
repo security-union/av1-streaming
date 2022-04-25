@@ -17,7 +17,7 @@ use std::{error::Error, env, sync::{Arc, Mutex}};
 use futures_util::StreamExt;
 use log::{info, debug};
 use tokio::sync::{mpsc::{channel, Sender, Receiver}};
-use video_streaming::types::oculus_controller_state::{OculusControllerState, OculusControllerState_Vector2};
+use video_streaming::{types::oculus_controller_state::{OculusControllerState, OculusControllerState_Vector2}, common::compute_h_bridge_input_signals};
 
 use std::thread;
 use std::time::Duration;
@@ -33,7 +33,7 @@ const PERIOD_MS: u64 = 250;
 const PULSE_MIN_US: u64 = 500;
 const PULSE_NEUTRAL_US: u64 = 750;
 const PULSE_MAX_US: u64 = 1000;
-const DC_MOTOR_MAX_DUTY_CYCLE: f32 = 75f32;
+
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -108,13 +108,3 @@ async fn client_connection(ws: WebSocket, tx: Sender<OculusControllerState>) {
     handle.await;
 }
 
-fn compute_h_bridge_input_signals(state: OculusControllerState) -> (i16, i16) {
-    let y = (state.get_primary_thumbstick().get_y() * DC_MOTOR_MAX_DUTY_CYCLE) as i16; // -1 ... 1
-    if y > 0i16 {
-        // forward
-        (y, 0)
-    } else {
-        // back
-        (0, y)
-    }
-}
