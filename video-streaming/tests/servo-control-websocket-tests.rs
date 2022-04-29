@@ -1,6 +1,6 @@
-use video_streaming::{types::oculus_controller_state::OculusControllerState, common::compute_h_bridge_input_signals};
-
-
+use video_streaming::{
+    common::compute_h_bridge_input_signals, types::oculus_controller_state::OculusControllerState,
+};
 
 #[test]
 fn test_primary_controller_y_min() {
