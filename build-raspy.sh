@@ -1,11 +1,11 @@
 #!/bin/bash -e
 
 USER=ubuntu
-PI_IP=192.168.18.39
+PI_IP=192.168.18.44
 TARGET=aarch64-unknown-linux-gnu
 
-sudo apt update
-sudo apt install -y libclang-dev libv4l-dev
+#sudo apt update
+#sudo apt install -y libclang-dev libv4l-dev
 
 # build binary
 cargo build --release --target $TARGET
