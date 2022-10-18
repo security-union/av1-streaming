@@ -6,7 +6,6 @@ use base64::encode;
 use bus::{Bus, BusReader};
 use futures_util::{SinkExt, StreamExt};
 use image::codecs;
-use image::ColorType;
 use image::ImageBuffer;
 use image::Rgb;
 use nokhwa::{Camera, CameraFormat, CaptureAPIBackend, FrameFormat};
@@ -14,7 +13,6 @@ use rav1e::prelude::ChromaSampling;
 use rav1e::*;
 use rav1e::{config::SpeedSettings, prelude::FrameType};
 use serde::{Deserialize, Serialize};
-use serde_json;
 use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -75,6 +73,11 @@ async fn main() -> Result<()> {
         .map(|o| Encoder::from_str(o.as_ref()).ok())
         .flatten()
         .unwrap_or(Encoder::AV1);
+    let websocket_port = env::var("WEBSOCKET_PORT")
+        .ok()
+        .map(|n| n.parse::<u16>().ok())
+        .flatten()
+        .unwrap_or(8080u16);
 
     warn!("Framerate {framerate}");
     enc.width = width;
@@ -189,12 +192,6 @@ async fn main() -> Result<()> {
                     jpeg_encoder
                         .encode_image(&frame)
                         .map_err(|e| error!("{:?}", e));
-                    // let frame = VideoPacket {
-                    //     data: Some(encode(&buf)),
-                    //     frameType: None,
-                    //     epochTime: since_the_epoch(),
-                    //     encoding: encoder.clone(),
-                    // };
                     let json = buf;
                     bus_copy.lock().unwrap().broadcast(json);
                     fps_tx_copy.send(since_the_epoch().as_millis()).unwrap();
@@ -241,16 +238,7 @@ async fn main() -> Result<()> {
                             "delta"
                         };
                         let time_serializing = Instant::now();
-                        let data = encode(pkt.data);
                         debug!("read thread: base64 Encoded packet {}", pkt.input_frameno);
-                        // let frame = VideoPacket {
-                        //     data: Some(data),
-                        //     frameType: Some(frame_type.to_string()),
-                        //     epochTime: since_the_epoch(),
-                        //     encoding: encoder.clone(),
-                        // };
-                        // let json = serde_json::to_string(&frame).unwrap();
-                        // bus_copy.lock().unwrap().broadcast(json);
                         debug!("time serializing {:?}", time_serializing.elapsed());
                         fps_tx_copy.send(since_the_epoch().as_millis()).unwrap();
                     }
@@ -285,7 +273,9 @@ async fn main() -> Result<()> {
             },
         );
     // WebSocker server thread
-    warp::serve(routes).run(([0, 0, 0, 0], 8080)).await;
+    warp::serve(routes)
+        .run(([0, 0, 0, 0], websocket_port))
+        .await;
     encoder_thread.join().unwrap();
     fps_thread.join().unwrap();
     camera_thread.join().unwrap();
