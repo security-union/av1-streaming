@@ -92,7 +92,7 @@ async fn main() -> Result<()> {
     enc.tiles = 4;
     enc.chroma_sampling = ChromaSampling::Cs444;
 
-    let bus: Arc<Mutex<Bus<String>>> = Arc::new(Mutex::new(bus::Bus::new(10)));
+    let bus: Arc<Mutex<Bus<Vec<u8>>>> = Arc::new(Mutex::new(bus::Bus::new(10)));
     let bus_copy = bus.clone();
     let add_bus = warp::any().map(move || bus.clone());
 
@@ -189,13 +189,13 @@ async fn main() -> Result<()> {
                     jpeg_encoder
                         .encode_image(&frame)
                         .map_err(|e| error!("{:?}", e));
-                    let frame = VideoPacket {
-                        data: Some(encode(&buf)),
-                        frameType: None,
-                        epochTime: since_the_epoch(),
-                        encoding: encoder.clone(),
-                    };
-                    let json = serde_json::to_string(&frame).unwrap();
+                    // let frame = VideoPacket {
+                    //     data: Some(encode(&buf)),
+                    //     frameType: None,
+                    //     epochTime: since_the_epoch(),
+                    //     encoding: encoder.clone(),
+                    // };
+                    let json = buf;
                     bus_copy.lock().unwrap().broadcast(json);
                     fps_tx_copy.send(since_the_epoch().as_millis()).unwrap();
                     continue;
@@ -243,14 +243,14 @@ async fn main() -> Result<()> {
                         let time_serializing = Instant::now();
                         let data = encode(pkt.data);
                         debug!("read thread: base64 Encoded packet {}", pkt.input_frameno);
-                        let frame = VideoPacket {
-                            data: Some(data),
-                            frameType: Some(frame_type.to_string()),
-                            epochTime: since_the_epoch(),
-                            encoding: encoder.clone(),
-                        };
-                        let json = serde_json::to_string(&frame).unwrap();
-                        bus_copy.lock().unwrap().broadcast(json);
+                        // let frame = VideoPacket {
+                        //     data: Some(data),
+                        //     frameType: Some(frame_type.to_string()),
+                        //     epochTime: since_the_epoch(),
+                        //     encoding: encoder.clone(),
+                        // };
+                        // let json = serde_json::to_string(&frame).unwrap();
+                        // bus_copy.lock().unwrap().broadcast(json);
                         debug!("time serializing {:?}", time_serializing.elapsed());
                         fps_tx_copy.send(since_the_epoch().as_millis()).unwrap();
                     }
@@ -275,7 +275,7 @@ async fn main() -> Result<()> {
         .and(add_bus)
         .and(add_counter)
         .map(
-            |ws: warp::ws::Ws, bus: Arc<Mutex<Bus<String>>>, counter: Arc<Mutex<u16>>| {
+            |ws: warp::ws::Ws, bus: Arc<Mutex<Bus<Vec<u8>>>>, counter: Arc<Mutex<u16>>| {
                 debug!("before creating upgrade");
                 // And then our closure will be called when it completes...
                 let reader = bus.lock().unwrap().add_rx();
@@ -308,7 +308,7 @@ fn to_ycbcr(pixel: &Rgb<u8>) -> (u8, u8, u8) {
 
 pub async fn client_connection(
     ws: WebSocket,
-    mut reader: BusReader<String>,
+    mut reader: BusReader<Vec<u8>>,
     counter: Arc<Mutex<u16>>,
 ) {
     info!("establishing client connection... {:?}", ws);
@@ -324,7 +324,7 @@ pub async fn client_connection(
         let next = reader.recv().unwrap();
         debug!("Forwarding video message");
         let time_serializing = Instant::now();
-        match client_ws_sender.send(Message::text(next)).await {
+        match client_ws_sender.send(Message::binary(next)).await {
             Ok(_) => {}
             Err(_e) => {
                 info!("blocking before removing connection {:?}", counter);
