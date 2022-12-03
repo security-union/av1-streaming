@@ -13,6 +13,7 @@
     "@types/node": "^16.11.22",
     "@types/react": "^17.0.39",
     "@types/react-dom": "^17.0.11",
+    "@typescript-eslint/eslint-plugin": "^5.45.0",
     "base-64": "^1.0.0",
     "base64-js": "^1.5.1",
     "prettier": "^2.5.1",
@@ -33,9 +34,13 @@
   },
   "eslintConfig": {
     "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
+      "eslint:recommended",
+      "plugin:@typescript-eslint/recommended",
+      "plugin:react/recommended"
+    ],
+    "rules": {
+      "@typescript-eslint/ban-ts-comment": "off"
+    }
   },
   "browserslist": {
     "production": [
@@ -48,5 +53,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "@typescript-eslint/parser": "^5.45.0"
   }
 }

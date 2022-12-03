@@ -1,3 +1,4 @@
+import React from 'react';
 import { WebSocketDemo } from "./webSocketDemo";
 
 function App() {

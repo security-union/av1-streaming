@@ -1,0 +1,47 @@
+name: CI
+
+# This workflow run tests and build for each push
+
+on:
+  push:
+    branches:
+      - '*'
+
+jobs:
+  lint-rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up NASM
+        uses: ilammy/setup-nasm@v1.4.0
+      - name: Update local toolchain
+        run: |
+          rustup update
+          rustup component add clippy
+          rustup install nightly
+      - name: Toolchain info
+        run: |
+          cargo --version --verbose
+          rustc --version
+          cargo clippy --version
+      - name: Lint
+        run: |
+          cd video-streaming
+          cargo clippy --all-targets -- -D clippy::all
+  lint-ts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Node and npm info
+        run: |
+          node --version
+          npm --version
+      - name: Install npm deps
+        run: |
+          cd web-ui
+          npm install
+      - name: Lint
+        run: |
+          cd web-ui
+          npx eslint .
+
