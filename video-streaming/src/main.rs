@@ -6,7 +6,6 @@ use base64::encode;
 use bus::{Bus, BusReader};
 use futures_util::{SinkExt, StreamExt};
 use image::codecs;
-use image::ColorType;
 use image::ImageBuffer;
 use image::Rgb;
 use nokhwa::{Camera, CameraFormat, CaptureAPIBackend, FrameFormat};
@@ -14,7 +13,6 @@ use rav1e::prelude::ChromaSampling;
 use rav1e::*;
 use rav1e::{config::SpeedSettings, prelude::FrameType};
 use serde::{Deserialize, Serialize};
-use serde_json;
 use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
@@ -24,6 +22,8 @@ use warp::{
     ws::{Message, WebSocket},
     Filter,
 };
+
+type CameraPacket = (ImageBuffer<Rgb<u8>, Vec<u8>>, u128);
 
 #[allow(non_snake_case)]
 #[derive(Serialize, Deserialize, Debug)]
@@ -36,8 +36,8 @@ struct VideoPacket {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 enum Encoder {
-    MJPEG,
-    AV1,
+    Mjpeg,
+    Av1,
 }
 
 impl FromStr for Encoder {
@@ -45,8 +45,8 @@ impl FromStr for Encoder {
 
     fn from_str(input: &str) -> Result<Encoder, Self::Err> {
         match input {
-            "MJPEG" => Ok(Encoder::MJPEG),
-            "AV1" => Ok(Encoder::AV1),
+            "Mjpeg" => Ok(Encoder::Mjpeg),
+            "Av1" => Ok(Encoder::Av1),
             _ => Err(()),
         }
     }
@@ -62,19 +62,16 @@ async fn main() -> Result<()> {
     let height = 480;
     let video_device_index: usize = env::var("VIDEO_DEVICE_INDEX")
         .ok()
-        .map(|n| n.parse::<usize>().ok())
-        .flatten()
+        .and_then(|n| n.parse::<usize>().ok())
         .unwrap_or(0);
     let framerate: u32 = env::var("FRAMERATE")
         .ok()
-        .map(|n| n.parse::<u32>().ok())
-        .flatten()
+        .and_then(|n| n.parse::<u32>().ok())
         .unwrap_or(10u32);
     let encoder = env::var("ENCODER")
         .ok()
-        .map(|o| Encoder::from_str(o.as_ref()).ok())
-        .flatten()
-        .unwrap_or(Encoder::AV1);
+        .and_then(|o| Encoder::from_str(o.as_ref()).ok())
+        .unwrap_or(Encoder::Av1);
 
     warn!("Framerate {framerate}");
     enc.width = width;
@@ -105,10 +102,7 @@ async fn main() -> Result<()> {
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
 
     let (fps_tx, fps_rx): (Sender<u128>, Receiver<u128>) = mpsc::channel();
-    let (cam_tx, cam_rx): (
-        Sender<(ImageBuffer<Rgb<u8>, Vec<u8>>, u128)>,
-        Receiver<(ImageBuffer<Rgb<u8>, Vec<u8>>, u128)>,
-    ) = mpsc::channel();
+    let (cam_tx, cam_rx): (Sender<CameraPacket>, Receiver<CameraPacket>) = mpsc::channel();
 
     let devices = nokhwa::query_devices(CaptureAPIBackend::Video4Linux)?;
     info!("available cameras: {:?}", devices);
@@ -141,7 +135,7 @@ async fn main() -> Result<()> {
                 info!("waiting for browser...");
                 thread::sleep(Duration::from_millis(200));
                 let counter = client_counter.lock().unwrap();
-                if *counter <= 0 {
+                if *counter == 0 {
                     continue;
                 }
             }
@@ -159,7 +153,7 @@ async fn main() -> Result<()> {
             loop {
                 {
                     let counter = client_counter.lock().unwrap();
-                    if *counter <= 0 {
+                    if *counter == 0 {
                         break;
                     }
                 }
@@ -182,7 +176,7 @@ async fn main() -> Result<()> {
                     debug!("throwing away old frame with age {} ms", frame_age);
                     continue;
                 }
-                if encoder == Encoder::MJPEG {
+                if encoder == Encoder::Mjpeg {
                     let mut buf: Vec<u8> = Vec::new();
                     let mut jpeg_encoder =
                         codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 80);
@@ -279,7 +273,7 @@ async fn main() -> Result<()> {
                 debug!("before creating upgrade");
                 // And then our closure will be called when it completes...
                 let reader = bus.lock().unwrap().add_rx();
-                let counter_copy = counter.clone();
+                let counter_copy = counter;
                 debug!("adding client connection");
                 ws.on_upgrade(|ws| client_connection(ws, reader, counter_copy))
             },
@@ -293,7 +287,7 @@ async fn main() -> Result<()> {
 }
 
 fn clamp(val: f32) -> u8 {
-    return (val.round() as u8).max(0_u8).min(255_u8);
+    (val.round() as u8).max(0_u8).min(255_u8)
 }
 
 fn to_ycbcr(pixel: &Rgb<u8>) -> (u8, u8, u8) {
@@ -303,7 +297,7 @@ fn to_ycbcr(pixel: &Rgb<u8>) -> (u8, u8, u8) {
     let cb = 128_f32 + (-37.797 * r as f32 - 74.203 * g as f32 + 112.000 * b as f32) / 255_f32;
     let cr = 128_f32 + (112.000 * r as f32 - 93.786 * g as f32 - 18.214 * b as f32) / 255_f32;
 
-    return (clamp(y), clamp(cb), clamp(cr));
+    (clamp(y), clamp(cb), clamp(cr))
 }
 
 pub async fn client_connection(
@@ -316,7 +310,7 @@ pub async fn client_connection(
     {
         info!("blocking before adding connection {:?}", counter);
         let mut counter_ref = counter.lock().unwrap();
-        *counter_ref = *counter_ref + 1;
+        *counter_ref += 1;
         info!("adding connection, connection counter: {:?}", *counter_ref);
         drop(counter_ref);
     }
@@ -329,7 +323,7 @@ pub async fn client_connection(
             Err(_e) => {
                 info!("blocking before removing connection {:?}", counter);
                 let mut counter_ref = counter.lock().unwrap();
-                *counter_ref = *counter_ref - 1;
+                *counter_ref -= 1;
                 info!(
                     "Removing connection, connection counter: {:?}",
                     *counter_ref
