@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      - name Add NASM
+      - name: Add NASM
         run: |
           apt install -y nasm
       - name: Update local toolchain
