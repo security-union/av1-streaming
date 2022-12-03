@@ -14,7 +14,7 @@ if (LOCALHOST_TEST) {
 if (!LOCALHOST_TEST && !BROWSER_TEST) {
   webSocketURL = `ws://${RASPBERRY_PI_IP}:8080/ws`;
 }
-let codec_string = "av01.0.01M.08";
+const codec_string = "av01.0.01M.08";
 // av01: AV1
 // 0 profile: main profile
 // 01 level: level2.1
@@ -36,7 +36,7 @@ export const WebSocketDemo = () => {
   const { sendMessage, lastJsonMessage, readyState } = useWebSocket(socketUrl, {
     reconnectInterval: 2000,
     retryOnError: true,
-    shouldReconnect: (event) => {
+    shouldReconnect: () => {
       return true;
     }
   });
@@ -67,8 +67,8 @@ export const WebSocketDemo = () => {
           console.error("no data");
           return;
         }
-        
-        
+
+
         if (videoDecoder && payload.encoding == "AV1") {
           const chunk = new EncodedVideoChunk({
             timestamp: 0,
@@ -90,8 +90,8 @@ export const WebSocketDemo = () => {
               // @ts-ignore
               canvas.getContext('2d').drawImage(imageBitmap, 0, 0)
             });
-          };  
-          image.src = url;        
+          };
+          image.src = url;
         }
       }
     } catch (e: any) {
@@ -139,15 +139,14 @@ export const WebSocketDemo = () => {
       processChunk: (arg0: EncodedVideoChunk) => void
     ) {
       if (webcamRef.current !== null) {
-        // @ts-ignore
         const stream = webcamRef.current.stream as MediaStream;
         let frame_counter = 0;
-        var track = stream.getTracks()[0];
-        var settings = track.getSettings();
-        var pending_outputs = 0;
+        const track = stream.getTracks()[0];
+        const settings = track.getSettings();
+        let pending_outputs = 0;
         // @ts-ignore
-        var prc = new MediaStreamTrackProcessor(track);
-        var frameStream = prc.readable;
+        const prc = new MediaStreamTrackProcessor(track);
+        const frameStream = prc.readable;
         const frameReader = frameStream.getReader();
 
         const init = {
@@ -167,7 +166,7 @@ export const WebSocketDemo = () => {
           height: settings.height!,
         };
 
-        let encoder = new VideoEncoder(init);
+        const encoder = new VideoEncoder(init);
         encoder.configure(config);
         // @ts-ignore
         frameReader.read().then(function processFrame({ done, value }) {
