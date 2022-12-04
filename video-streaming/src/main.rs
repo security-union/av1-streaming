@@ -36,8 +36,8 @@ struct VideoPacket {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 enum Encoder {
-    Mjpeg,
-    Av1,
+    MJPEG,
+    AV1,
 }
 
 impl FromStr for Encoder {
@@ -45,8 +45,8 @@ impl FromStr for Encoder {
 
     fn from_str(input: &str) -> Result<Encoder, Self::Err> {
         match input {
-            "Mjpeg" => Ok(Encoder::Mjpeg),
-            "Av1" => Ok(Encoder::Av1),
+            "MJPEG" => Ok(Encoder::MJPEG),
+            "AV1" => Ok(Encoder::AV1),
             _ => Err(()),
         }
     }
@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
     let encoder = env::var("ENCODER")
         .ok()
         .and_then(|o| Encoder::from_str(o.as_ref()).ok())
-        .unwrap_or(Encoder::Av1);
+        .unwrap_or(Encoder::AV1);
 
     warn!("Framerate {framerate}");
     enc.width = width;
@@ -79,7 +79,7 @@ async fn main() -> Result<()> {
     enc.bit_depth = 8;
     enc.error_resilient = true;
     enc.speed_settings = SpeedSettings::from_preset(10);
-    enc.rdo_lookahead_frames = 1;
+    enc.speed_settings.rdo_lookahead_frames = 1;
     enc.min_key_frame_interval = 20;
     enc.max_key_frame_interval = 50;
     enc.low_latency = true;
@@ -98,7 +98,6 @@ async fn main() -> Result<()> {
 
     // Add counter to warp so that we can access it when we add/remove connections
     let add_counter = warp::any().map(move || web_socket_counter.clone());
-
     let cfg = Config::new().with_encoder_config(enc).with_threads(4);
 
     let (fps_tx, fps_rx): (Sender<u128>, Receiver<u128>) = mpsc::channel();
@@ -124,6 +123,7 @@ async fn main() -> Result<()> {
                 }
                 Err(e) => {
                     error!("Receive error: {:?}", e);
+                    panic!("I'm done yo");
                 }
             }
         }
@@ -146,7 +146,7 @@ async fn main() -> Result<()> {
                     height as u32,
                     FrameFormat::MJPEG,
                     framerate,
-                )), // format
+                ))
             )
             .unwrap();
             camera.open_stream().unwrap();
@@ -168,7 +168,7 @@ async fn main() -> Result<()> {
             let fps_tx_copy = fps_tx.clone();
             let mut ctx: Context<u8> = cfg.new_context().unwrap();
             loop {
-                let (mut frame, age) = cam_rx.recv().unwrap();
+                let (frame, age) = cam_rx.recv().unwrap();
                 // If age older than threshold, throw it away.
                 let frame_age = since_the_epoch().as_millis() - age;
                 debug!("frame age {}", frame_age);
@@ -176,7 +176,7 @@ async fn main() -> Result<()> {
                     debug!("throwing away old frame with age {} ms", frame_age);
                     continue;
                 }
-                if encoder == Encoder::Mjpeg {
+                if encoder == Encoder::MJPEG {
                     let mut buf: Vec<u8> = Vec::new();
                     let mut jpeg_encoder =
                         codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 80);
@@ -197,7 +197,7 @@ async fn main() -> Result<()> {
                 let mut r_slice: Vec<u8> = vec![];
                 let mut g_slice: Vec<u8> = vec![];
                 let mut b_slice: Vec<u8> = vec![];
-                for pixel in frame.pixels_mut() {
+                for pixel in frame.pixels() {
                     let (r, g, b) = to_ycbcr(pixel);
                     r_slice.push(r);
                     g_slice.push(g);
@@ -208,7 +208,7 @@ async fn main() -> Result<()> {
                 let mut frame = ctx.new_frame();
                 let encoding_time = Instant::now();
                 for (dst, src) in frame.planes.iter_mut().zip(planes) {
-                    dst.copy_from_raw_u8(&src, enc.width, 1);
+                    dst.copy_from_raw_u8(&src, width, 1);
                 }
 
                 match ctx.send_frame(frame) {
