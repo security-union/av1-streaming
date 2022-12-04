@@ -27,7 +27,7 @@ jobs:
       - name: Lint
         run: |
           cd video-streaming
-          cargo clippy --all-targets -- -D clippy::all
+          cargo clippy --all-targets -- -D clippy::correctness
   lint-ts:
     runs-on: ubuntu-latest
     steps:
