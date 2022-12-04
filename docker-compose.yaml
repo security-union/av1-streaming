@@ -9,7 +9,7 @@ services:
       - RUST_LOG=info
       - FRAMERATE=30
       - VIDEO_DEVICE_INDEX=${VIDEO_DEVICE_INDEX:-0}
-      - ENCODER=Mjpeg
+      - ENCODER=AV1
     volumes:
       - /app/target
       - /dev/video0:/dev/video0

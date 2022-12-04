@@ -32,6 +32,8 @@ export const WebSocketDemo = () => {
   const canvasRef = React.useRef(null);
   const webcamRef = React.useRef(null);
   const [videoDecoder, setVideoDecoder] = useState(null);
+  const [height, setHeight] = useState(480);
+  const [width, setWidth] = useState(640);
 
   const { sendMessage, lastJsonMessage, readyState } = useWebSocket(socketUrl, {
     reconnectInterval: 2000,
@@ -160,6 +162,11 @@ export const WebSocketDemo = () => {
             console.error(e.message);
           },
         };
+
+        if (settings.height && settings.width) {
+            setHeight(settings.height);
+            setWidth(settings.width);
+        }
 
         const config = {
           codec: codec_string,

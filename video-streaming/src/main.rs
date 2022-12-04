@@ -36,8 +36,8 @@ struct VideoPacket {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 enum Encoder {
-    Mjpeg,
-    Av1,
+    MJPEG,
+    AV1,
 }
 
 impl FromStr for Encoder {
@@ -45,8 +45,8 @@ impl FromStr for Encoder {
 
     fn from_str(input: &str) -> Result<Encoder, Self::Err> {
         match input {
-            "Mjpeg" => Ok(Encoder::Mjpeg),
-            "Av1" => Ok(Encoder::Av1),
+            "MJPEG" => Ok(Encoder::MJPEG),
+            "AV1" => Ok(Encoder::AV1),
             _ => Err(()),
         }
     }
@@ -58,8 +58,8 @@ static THRESHOLD_MILLIS: u128 = 1000;
 async fn main() -> Result<()> {
     env_logger::init();
     let mut enc = EncoderConfig::default();
-    let width = 1920;
-    let height = 1080;
+    let width = 640;
+    let height = 480;
     let video_device_index: usize = env::var("VIDEO_DEVICE_INDEX")
         .ok()
         .and_then(|n| n.parse::<usize>().ok())
@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
     let encoder = env::var("ENCODER")
         .ok()
         .and_then(|o| Encoder::from_str(o.as_ref()).ok())
-        .unwrap_or(Encoder::Av1);
+        .unwrap_or(Encoder::AV1);
 
     warn!("Framerate {framerate}");
     enc.width = width;
@@ -176,7 +176,7 @@ async fn main() -> Result<()> {
                     debug!("throwing away old frame with age {} ms", frame_age);
                     continue;
                 }
-                if encoder == Encoder::Mjpeg {
+                if encoder == Encoder::MJPEG {
                     let mut buf: Vec<u8> = Vec::new();
                     let mut jpeg_encoder =
                         codecs::jpeg::JpegEncoder::new_with_quality(&mut buf, 80);
