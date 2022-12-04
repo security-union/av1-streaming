@@ -1,4 +1,4 @@
-version: "3.8"
+version: '3'
 services:
   video-stream:
     privileged: true
@@ -8,8 +8,8 @@ services:
     environment:
       - RUST_LOG=info
       - FRAMERATE=30
-      - VIDEO_DEVICE_INDEX=0
-      - ENCODER=MJPEG
+      - VIDEO_DEVICE_INDEX=${VIDEO_DEVICE_INDEX:-0}
+      - ENCODER=Mjpeg
     volumes:
       - /app/target
       - /dev/video0:/dev/video0
@@ -33,4 +33,4 @@ services:
     environment:
       - REACT_APP_USE_LOCALHOST=false
       - REACT_APP_BROWSER_TEST=false
-      - REACT_APP_RASPBERRY_PI_IP=192.168.18.39
+      - REACT_APP_RASPBERRY_PI_IP=griffin-desktop.local

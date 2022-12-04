@@ -139,6 +139,7 @@ export const WebSocketDemo = () => {
       processChunk: (arg0: EncodedVideoChunk) => void
     ) {
       if (webcamRef.current !== null) {
+        // @ts-ignore
         const stream = webcamRef.current.stream as MediaStream;
         let frame_counter = 0;
         const track = stream.getTracks()[0];

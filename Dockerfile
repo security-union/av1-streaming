@@ -1,4 +1,4 @@
-FROM docker.io/rust:1.58.1-bullseye
+FROM docker.io/rust:1.65.0-bullseye
 
 RUN wget https://github.com/ryankurte/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-unknown-linux-gnu.tgz && \
     tar zxvf cargo-binstall-x86_64-unknown-linux-gnu.tgz -C /usr/bin/ && \
@@ -7,7 +7,7 @@ RUN wget https://github.com/ryankurte/cargo-binstall/releases/latest/download/ca
 RUN cargo binstall --no-confirm cargo-watch
 
 RUN apt-get update && \
-    apt-get install -y clang nasm && \ 
+    apt-get install -y clang nasm && \
     apt-get -y clean
 
 WORKDIR /app
