@@ -16,9 +16,7 @@ Use the latest and greatest open source technology to live stream from a Raspber
 
 1. Start Docker `docker-compose up`
 
-2. Download Chrome Canary from https://www.chromium.org/getting-involved/dev-channel/ for your OS, (App tested with Linux)
-
-3. Go to `localhost:3000`
+2. Go to `localhost:3000`
 
 ### Customization
 

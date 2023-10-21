@@ -8,7 +8,7 @@ services:
     environment:
       - RUST_LOG=info
       - FRAMERATE=30
-      - VIDEO_DEVICE_INDEX=${VIDEO_DEVICE_INDEX:-0}
+      - VIDEO_DEVICE_INDEX=${VIDEO_DEVICE_INDEX:-2}
       - ENCODER=MJPEG
     volumes:
       - /app/target
@@ -33,4 +33,4 @@ services:
     environment:
       - REACT_APP_USE_LOCALHOST=false
       - REACT_APP_BROWSER_TEST=false
-      - REACT_APP_RASPBERRY_PI_IP=192.168.18.39
+      - REACT_APP_RASPBERRY_PI_IP=192.168.0.110
