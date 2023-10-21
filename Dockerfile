@@ -1,4 +1,4 @@
-FROM docker.io/rust:1.65.0-bullseye
+FROM rust:1.73.0-bookworm
 
 RUN wget https://github.com/ryankurte/cargo-binstall/releases/latest/download/cargo-binstall-x86_64-unknown-linux-gnu.tgz && \
     tar zxvf cargo-binstall-x86_64-unknown-linux-gnu.tgz -C /usr/bin/ && \

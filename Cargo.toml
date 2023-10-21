@@ -1,5 +1,5 @@
 [workspace]
-
+respolver = 2
 members = [
     "video-streaming"
 ]

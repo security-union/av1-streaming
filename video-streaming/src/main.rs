@@ -146,7 +146,7 @@ async fn main() -> Result<()> {
                     height as u32,
                     FrameFormat::MJPEG,
                     framerate,
-                ))
+                )),
             )
             .unwrap();
             camera.open_stream().unwrap();
